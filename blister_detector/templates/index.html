@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blister Boundary Detection | SAM 2</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>Blister Boundary Detector</h1>
+            <p class="subtitle">Powered by Meta Segment Anything 2 (SAM 2)</p>
+        </header>
+
+        <main>
+            <div class="upload-section glass-panel">
+                <h2>Upload Image</h2>
+                <form id="upload-form">
+                    <div class="file-input-wrapper">
+                        <input type="file" id="file-input" name="file" accept="image/jpeg, image/png, image/webp" required>
+                        <div class="upload-placeholder">
+                            <span class="icon">📁</span>
+                            <p>Drag & Drop or Click to Select</p>
+                        </div>
+                    </div>
+                    <button type="submit" class="primary-btn" id="submit-btn">Detect Blisters</button>
+                </form>
+                <div id="loading" class="hidden">
+                    <div class="spinner"></div>
+                    <p>Processing with SAM 2...</p>
+                </div>
+                <div id="error-msg" class="hidden"></div>
+            </div>
+
+            <div class="results-section hidden" id="results">
+                <h2>Detection Results</h2>
+                <div class="stats">
+                    <span id="contour-count"></span> blisters detected
+                </div>
+                
+                <div class="images-container">
+                    <div class="image-card glass-panel">
+                        <h3>Original</h3>
+                        <div class="img-wrapper">
+                            <img id="original-img" src="" alt="Original Image">
+                        </div>
+                    </div>
+                    
+                    <div class="image-card glass-panel">
+                        <h3>Processed</h3>
+                        <div class="img-wrapper">
+                            <img id="processed-img" src="" alt="Processed Image">
+                        </div>
+                        <a id="download-btn" class="secondary-btn" href="" download>Download Result</a>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const form = document.getElementById('upload-form');
+        const fileInput = document.getElementById('file-input');
+        const placeholder = document.querySelector('.upload-placeholder p');
+        
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                placeholder.textContent = fileInput.files[0].name;
+            } else {
+                placeholder.textContent = 'Drag & Drop or Click to Select';
+            }
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(form);
+            const submitBtn = document.getElementById('submit-btn');
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            const errorMsg = document.getElementById('error-msg');
+            
+            submitBtn.disabled = true;
+            loading.classList.remove('hidden');
+            results.classList.add('hidden');
+            errorMsg.classList.add('hidden');
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                document.getElementById('original-img').src = data.original_url;
+                document.getElementById('processed-img').src = data.processed_url;
+                document.getElementById('download-btn').href = data.processed_url;
+                document.getElementById('contour-count').textContent = data.contour_count;
+                
+                results.classList.remove('hidden');
+                // Scroll to results
+                results.scrollIntoView({ behavior: 'smooth' });
+            } catch (err) {
+                errorMsg.textContent = 'Error: ' + err.message;
+                errorMsg.classList.remove('hidden');
+            } finally {
+                submitBtn.disabled = false;
+                loading.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

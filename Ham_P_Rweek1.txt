@@ -1,0 +1,4 @@
+Brainstormed several ways of applications of idea .
+and selected the best one based on timeframe and implication efficiency.
+
+trained a flask version of the model to identify the border of the meds .
