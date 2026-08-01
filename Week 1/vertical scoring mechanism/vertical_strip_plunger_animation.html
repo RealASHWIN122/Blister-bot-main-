@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blister Bot — Vertical Strip Plunger Ejection Mechanism (3D)</title>
+
+    <!-- Google Fonts & FontAwesome Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Three.js and OrbitControls via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <style>
+        :root {
+            --bg-dark: #090D16;
+            --panel-bg: rgba(15, 23, 42, 0.82);
+            --panel-border: rgba(255, 255, 255, 0.12);
+            --primary-cyan: #06B6D4;
+            --accent-orange: #F97316;
+            --accent-green: #10B981;
+            --text-main: #F8FAFC;
+            --text-muted: #94A3B8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #webgl-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: 14px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+            z-index: 10;
+            position: absolute;
+        }
+
+        header {
+            top: 20px;
+            left: 20px;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .header-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--accent-orange), #EA580C);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+            box-shadow: 0 0 16px rgba(249, 115, 22, 0.45);
+        }
+
+        .header-title h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+        .header-title p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+        .telemetry-panel {
+            top: 20px;
+            right: 20px;
+            width: 290px;
+            padding: 18px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .telemetry-header {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--accent-orange);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+
+        .telemetry-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .telemetry-row:last-child { border-bottom: none; }
+        .telemetry-label { color: var(--text-muted); }
+        .telemetry-value { color: var(--text-main); font-weight: 600; }
+
+        .camera-presets {
+            bottom: 100px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 10px;
+        }
+
+        .btn-camera {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            color: var(--text-main);
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-camera:hover, .btn-camera.active {
+            background: rgba(249, 115, 22, 0.2);
+            border-color: var(--accent-orange);
+            color: var(--accent-orange);
+        }
+
+        .control-bar {
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 660px;
+            max-width: 90vw;
+            padding: 14px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .phase-stepper {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .step-btn {
+            flex: 1;
+            padding: 8px 6px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+
+        .step-btn.active {
+            background: var(--accent-orange);
+            color: white;
+            border-color: var(--accent-orange);
+            box-shadow: 0 0 14px rgba(249, 115, 22, 0.55);
+        }
+
+        .scrubber-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .btn-play {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: var(--accent-orange);
+            color: white;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            box-shadow: 0 0 14px rgba(249, 115, 22, 0.55);
+            transition: transform 0.2s;
+        }
+
+        .btn-play:hover { transform: scale(1.08); }
+
+        input[type=range] {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.15);
+            outline: none;
+            cursor: pointer;
+            accent-color: var(--accent-orange);
+        }
+
+        .time-display {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-muted);
+            width: 50px;
+        }
+
+        .toggles-panel {
+            bottom: 20px;
+            left: 20px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+
+        .toggle-row input { accent-color: var(--accent-orange); cursor: pointer; }
+        .toggle-row:hover { color: var(--text-main); }
+    </style>
+</head>
+<body>
+
+    <div id="webgl-container"></div>
+
+    <!-- HEADER BANNER -->
+    <header class="glass-panel">
+        <div class="header-icon"><i class="fa-solid fa-arrows-up-down"></i></div>
+        <div class="header-title">
+            <h1>Vertical Strip Plunger Ejection</h1>
+            <p>270° U-Scoring & Horizontal Plunger Ejection Dynamics</p>
+        </div>
+    </header>
+
+    <!-- TELEMETRY DASHBOARD -->
+    <div class="glass-panel telemetry-panel">
+        <div class="telemetry-header">
+            <span>Vertical Telemetry</span>
+            <div class="status-dot" id="status-dot"></div>
+        </div>
+        <div class="telemetry-row">
+            <span class="telemetry-label">Active Phase:</span>
+            <span class="telemetry-value" id="t-phase">Phase 1: Vertical Align</span>
+        </div>
+        <div class="telemetry-row">
+            <span class="telemetry-label">Gantry X Pos:</span>
+            <span class="telemetry-value" id="t-x">-0.40 mm</span>
+        </div>
+        <div class="telemetry-row">
+            <span class="telemetry-label">Gantry Y (Height):</span>
+            <span class="telemetry-value" id="t-y">0.60 mm</span>
+        </div>
+        <div class="telemetry-row">
+            <span class="telemetry-label">Cutter Depth:</span>
+            <span class="telemetry-value" id="t-cutter">0.00 mm</span>
+        </div>
+        <div class="telemetry-row">
+            <span class="telemetry-label">Vertical Flap Angle:</span>
+            <span class="telemetry-value" id="t-flap">0.0°</span>
+        </div>
+        <div class="telemetry-row">
+            <span class="telemetry-label">Horizontal Plunger:</span>
+            <span class="telemetry-value" id="t-plunger">0.00 mm</span>
+        </div>
+        <div class="telemetry-row">
+            <span class="telemetry-label">Chute Sensor:</span>
+            <span class="telemetry-value" id="t-optic" style="color:var(--text-muted);">Standby</span>
+        </div>
+    </div>
+
+    <!-- TOGGLES -->
+    <div class="glass-panel toggles-panel">
+        <label class="toggle-row">
+            <input type="checkbox" id="toggle-xray">
+            <span>X-Ray Translucent Strip</span>
+        </label>
+        <label class="toggle-row">
+            <input type="checkbox" id="toggle-path" checked>
+            <span>Show 270° Scoring Path</span>
+        </label>
+        <label class="toggle-row">
+            <input type="checkbox" id="toggle-sparks" checked>
+            <span>Blade Sparks Effect</span>
+        </label>
+    </div>
+
+    <!-- CAMERA PRESETS -->
+    <div class="glass-panel camera-presets">
+        <button class="btn-camera active" onclick="setCameraView('iso')"><i class="fa-solid fa-cube"></i> Studio Isometric</button>
+        <button class="btn-camera" onclick="setCameraView('front')"><i class="fa-solid fa-eye"></i> Front Bubble View</button>
+        <button class="btn-camera" onclick="setCameraView('plunger')"><i class="fa-solid fa-arrow-right-to-line"></i> Plunger Side View</button>
+        <button class="btn-camera" onclick="setCameraView('chute')"><i class="fa-solid fa-angle-down"></i> Bottom Chute View</button>
+    </div>
+
+    <!-- CONTROL BAR -->
+    <div class="glass-panel control-bar">
+        <div class="phase-stepper">
+            <div class="step-btn active" onclick="goToPhase(1)">1. Vertical Align</div>
+            <div class="step-btn" onclick="goToPhase(2)">2. Engage Blade</div>
+            <div class="step-btn" onclick="goToPhase(3)">3. 270° U-Score</div>
+            <div class="step-btn" onclick="goToPhase(4)">4. Open Flap</div>
+            <div class="step-btn" onclick="goToPhase(5)">5. Plunger Eject</div>
+        </div>
+        <div class="scrubber-row">
+            <button class="btn-play" id="btn-play-pause" onclick="togglePlay()"><i class="fa-solid fa-pause"></i></button>
+            <input type="range" id="timeline-slider" min="0" max="100" value="0" step="0.1">
+            <div class="time-display" id="time-text">0.00s</div>
+        </div>
+    </div>
+
+    <script>
+        // THREE.JS 3D SCENE SETUP
+        let scene, camera, renderer, controls;
+        let gantryCarriage, cutterWheel, plungerPin, verticalFoilFlap, targetCapsulePill, trajectoryLine, sparkParticles;
+        let verticalFoilSheet;
+
+        let isPlaying = true;
+        let animProgress = 0;
+        const animDuration = 6.0;
+
+        const COLOR_FOIL = 0xE2E8F0;
+        const COLOR_STEEL = 0x334155;
+        const COLOR_ALUMINUM = 0xC0C4CC;
+        const COLOR_CYAN = 0x06B6D4;
+        const COLOR_ORANGE = 0xF97316;
+        const COLOR_BLUE = 0x0284C7;
+        const COLOR_WHITE = 0xF8FAFC;
+
+        function init3D() {
+            const container = document.getElementById('webgl-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x090D16);
+            scene.fog = new THREE.FogExp2(0x090D16, 0.025);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(2.4, 1.2, 2.6);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.target.set(0, 0, 0);
+
+            // Lighting Setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+            scene.add(ambientLight);
+
+            const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
+            keyLight.position.set(3, 4, 3);
+            keyLight.castShadow = true;
+            keyLight.shadow.mapSize.width = 2048;
+            keyLight.shadow.mapSize.height = 2048;
+            scene.add(keyLight);
+
+            const fillLight = new THREE.DirectionalLight(0x06B6D4, 0.6);
+            fillLight.position.set(-3, 2, -2);
+            scene.add(fillLight);
+
+            const rimLight = new THREE.SpotLight(0xF97316, 2.5);
+            rimLight.position.set(0, 3, -3);
+            scene.add(rimLight);
+
+            buildVerticalModel();
+
+            window.addEventListener('resize', onWindowResize);
+
+            document.getElementById('timeline-slider').addEventListener('input', (e) => {
+                isPlaying = false;
+                document.getElementById('btn-play-pause').innerHTML = '<i class="fa-solid fa-play"></i>';
+                animProgress = parseFloat(e.target.value);
+                updateVerticalMechanism(animProgress);
+            });
+
+            document.getElementById('toggle-xray').addEventListener('change', (e) => {
+                verticalFoilSheet.material.opacity = e.target.checked ? 0.35 : 1.0;
+                verticalFoilSheet.material.transparent = e.target.checked;
+            });
+
+            document.getElementById('toggle-path').addEventListener('change', (e) => {
+                trajectoryLine.visible = e.target.checked;
+            });
+
+            animate();
+        }
+
+        function buildVerticalModel() {
+            // A. STANDING VERTICAL BLISTER CARD
+            const foilMat = new THREE.MeshStandardMaterial({
+                color: COLOR_FOIL,
+                metalness: 0.9,
+                roughness: 0.2,
+                side: THREE.DoubleSide
+            });
+
+            // Standing Vertical Foil Backing Sheet at Z = 0
+            verticalFoilSheet = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 2.4), foilMat);
+            verticalFoilSheet.position.set(0, 0, 0);
+            verticalFoilSheet.castShadow = true;
+            verticalFoilSheet.receiveShadow = true;
+            scene.add(verticalFoilSheet);
+
+            // Scored Vertical U-Flap (Hinged at top line, opens outward +Z)
+            const flapGeo = new THREE.PlaneGeometry(0.45, 0.45);
+            flapGeo.translate(0, -0.225, 0); // Hinge line at top edge
+            verticalFoilFlap = new THREE.Mesh(flapGeo, foilMat);
+            verticalFoilFlap.position.set(0, 0.225, 0.002);
+            scene.add(verticalFoilFlap);
+
+            // Target Capsule Pill (Inside transparent front PVC bubble at +Z = 0.15)
+            targetCapsulePill = new THREE.Group();
+            const pillRadius = 0.11;
+            const pillLength = 0.32;
+
+            const topGeo = new THREE.CylinderGeometry(pillRadius, pillRadius, pillLength/2, 16);
+            topGeo.translate(0, pillLength/4, 0);
+            const topMat = new THREE.MeshStandardMaterial({ color: COLOR_BLUE, roughness: 0.15 });
+            const pillTop = new THREE.Mesh(topGeo, topMat);
+
+            const botGeo = new THREE.CylinderGeometry(pillRadius, pillRadius, pillLength/2, 16);
+            botGeo.translate(0, -pillLength/4, 0);
+            const botMat = new THREE.MeshStandardMaterial({ color: COLOR_WHITE, roughness: 0.15 });
+            const pillBot = new THREE.Mesh(botGeo, botMat);
+
+            targetCapsulePill.add(pillTop);
+            targetCapsulePill.add(pillBot);
+            targetCapsulePill.position.set(0, 0, 0.15); // On front (+Z side)
+            scene.add(targetCapsulePill);
+
+            // Transparent Front PVC Bubbles Grid (+Z side)
+            const bubbleMat = new THREE.MeshPhysicalMaterial({
+                color: 0xE0F2FE,
+                roughness: 0.1,
+                transmission: 0.85,
+                transparent: true,
+                opacity: 0.35
+            });
+
+            for(let r=0; r<3; r++) {
+                for(let c=0; c<2; c++) {
+                    const bx = -0.4 + c * 0.8;
+                    const by = -0.6 + r * 0.6;
+                    const bMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.22), bubbleMat);
+                    bMesh.position.set(bx, by, 0.12);
+                    scene.add(bMesh);
+                }
+            }
+
+            // B. 2-AXIS CNC GANTRY & HORIZONTAL PLUNGER TOOLHEAD (REAR FACE -Z SIDE)
+            gantryCarriage = new THREE.Group();
+
+            const carriageMat = new THREE.MeshStandardMaterial({ color: COLOR_STEEL, metalness: 0.85, roughness: 0.25 });
+            const carriageBody = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.4), carriageMat);
+            carriageBody.castShadow = true;
+            gantryCarriage.add(carriageBody);
+
+            // Motorized Rotary Cutter Wheel (Disc mounted on +Z facing foil)
+            const cutterMat = new THREE.MeshStandardMaterial({ color: 0x1E293B, metalness: 0.95, roughness: 0.1 });
+            cutterWheel = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.04, 32), cutterMat);
+            cutterWheel.rotation.x = Math.PI / 2;
+            cutterWheel.position.set(0.18, 0.15, 0.22);
+            cutterWheel.castShadow = true;
+            gantryCarriage.add(cutterWheel);
+
+            // Horizontal Silicone Plunger Pin Assembly (Extends forward in +Z direction toward foil)
+            const plungerBodyMat = new THREE.MeshStandardMaterial({ color: COLOR_ALUMINUM, metalness: 0.9, roughness: 0.2 });
+            const plungerBody = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.4, 16), plungerBodyMat);
+            plungerBody.rotation.x = Math.PI / 2;
+            plungerBody.position.set(-0.15, -0.1, 0.2);
+            gantryCarriage.add(plungerBody);
+
+            const siliconeMat = new THREE.MeshStandardMaterial({ color: COLOR_ORANGE, roughness: 0.4 });
+            plungerPin = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.35, 16), siliconeMat);
+            plungerPin.rotation.x = Math.PI / 2;
+            plungerPin.position.set(-0.15, -0.1, 0.05); // Retracted inside carriage
+            gantryCarriage.add(plungerPin);
+
+            // LED Status Strip
+            const ledMat = new THREE.MeshBasicMaterial({ color: COLOR_ORANGE });
+            const ledStrip = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.04, 0.04), ledMat);
+            ledStrip.position.set(0, 0.24, -0.21);
+            gantryCarriage.add(ledStrip);
+
+            gantryCarriage.position.set(-0.4, 0.6, -0.6); // Start position behind foil (-Z side)
+            scene.add(gantryCarriage);
+
+            // CNC Rails
+            const railMat = new THREE.MeshStandardMaterial({ color: COLOR_ALUMINUM, metalness: 0.95, roughness: 0.15 });
+            const railZ1 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 3.2, 16), railMat);
+            railZ1.position.set(0.9, 0, -0.6);
+            scene.add(railZ1);
+
+            const railZ2 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 3.2, 16), railMat);
+            railZ2.position.set(-0.9, 0, -0.6);
+            scene.add(railZ2);
+
+            // Slanted Delivery Chute beneath vertical strip
+            const chuteMat = new THREE.MeshStandardMaterial({ color: COLOR_STEEL, metalness: 0.8, roughness: 0.3 });
+            const chute = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, 0.9), chuteMat);
+            chute.rotation.x = -Math.PI / 6; // Slanted forward
+            chute.position.set(0, -1.3, 0.4);
+            scene.add(chute);
+
+            // C. 270° VERTICAL U-PATH GLOWING TRAJECTORY
+            const pathPoints = [
+                new THREE.Vector3(-0.22, 0.22, -0.005),
+                new THREE.Vector3(-0.22, -0.22, -0.005),
+                new THREE.Vector3(0.22, -0.22, -0.005),
+                new THREE.Vector3(0.22, 0.22, -0.005)
+            ];
+            const pathGeo = new THREE.BufferGeometry().setFromPoints(pathPoints);
+            const pathMat = new THREE.LineBasicMaterial({ color: COLOR_ORANGE, linewidth: 3 });
+            trajectoryLine = new THREE.Line(pathGeo, pathMat);
+            scene.add(trajectoryLine);
+
+            sparkParticles = createSparks();
+            scene.add(sparkParticles);
+        }
+
+        function createSparks() {
+            const count = 30;
+            const pGeo = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+            for(let i=0; i<count*3; i++) positions[i] = 0;
+            pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const pMat = new THREE.PointsMaterial({ color: 0xF97316, size: 0.03, transparent: true, opacity: 0 });
+            return new THREE.Points(pGeo, pMat);
+        }
+
+        function updateVerticalMechanism(progress) {
+            const t = progress / 100.0;
+
+            let phaseStr = "";
+            let posX = -0.40, posY = 0.60, cDepth = 0.0, fAngle = 0.0, pStroke = 0.0, opticStr = "Standby";
+            let statusColor = "#10B981";
+
+            cutterWheel.rotation.z += 0.2;
+
+            if (t <= 0.20) {
+                // Phase 1: Vertical Align (t: 0.0 -> 0.20)
+                phaseStr = "Phase 1: Vertical Align";
+                const p = t / 0.20;
+                gantryCarriage.position.x = THREE.MathUtils.lerp(-0.4, -0.18, p);
+                gantryCarriage.position.y = THREE.MathUtils.lerp(0.6, 0.0, p);
+                gantryCarriage.position.z = -0.5; // Retracted -Z
+
+                posX = -0.4 + (p * 0.22);
+                posY = 0.6 - (p * 0.6);
+
+                highlightStepBtn(1);
+            }
+            else if (t <= 0.35) {
+                // Phase 2: Engage Blade (t: 0.20 -> 0.35)
+                phaseStr = "Phase 2: Engage Blade";
+                const p = (t - 0.20) / 0.15;
+                gantryCarriage.position.x = -0.18;
+                gantryCarriage.position.y = 0.0;
+                gantryCarriage.position.z = THREE.MathUtils.lerp(-0.5, -0.22, p); // Engage blade forward onto foil
+
+                cDepth = p * 1.5;
+                posX = -0.18; posY = 0.0;
+
+                highlightStepBtn(2);
+            }
+            else if (t <= 0.65) {
+                // Phase 3: 270° U-Score on Vertical Foil (t: 0.35 -> 0.65)
+                phaseStr = "Phase 3: 270° U-Scoring";
+                const p = (t - 0.35) / 0.30;
+                gantryCarriage.position.z = -0.22; // Blade engaged depth
+
+                // Traversal along vertical U-path: Leg 1 (-Y down) -> Leg 2 (+X right) -> Leg 3 (+Y up)
+                if (p <= 0.33) {
+                    const subP = p / 0.33;
+                    gantryCarriage.position.x = -0.18;
+                    gantryCarriage.position.y = THREE.MathUtils.lerp(0.22, -0.22, subP);
+                } else if (p <= 0.66) {
+                    const subP = (p - 0.33) / 0.33;
+                    gantryCarriage.position.x = THREE.MathUtils.lerp(-0.18, 0.22, subP);
+                    gantryCarriage.position.y = -0.22;
+                } else {
+                    const subP = (p - 0.66) / 0.34;
+                    gantryCarriage.position.x = 0.22;
+                    gantryCarriage.position.y = THREE.MathUtils.lerp(-0.22, 0.22, subP);
+                }
+
+                cDepth = 1.5;
+                sparkParticles.material.opacity = document.getElementById('toggle-sparks').checked ? 0.9 : 0;
+                sparkParticles.position.copy(gantryCarriage.position);
+
+                highlightStepBtn(3);
+            }
+            else if (t <= 0.80) {
+                // Phase 4: Open Foil Flap (t: 0.65 -> 0.80)
+                phaseStr = "Phase 4: Open Foil Flap";
+                const p = (t - 0.65) / 0.15;
+                sparkParticles.material.opacity = 0;
+
+                // Retract blade, shift plunger center
+                gantryCarriage.position.z = THREE.MathUtils.lerp(-0.22, -0.5, p);
+                gantryCarriage.position.x = THREE.MathUtils.lerp(0.22, 0.15, p);
+                gantryCarriage.position.y = 0.1;
+
+                // Vertical Flap swings open forward (+Z) around top hinge
+                fAngle = p * 75.0;
+                verticalFoilFlap.rotation.x = THREE.MathUtils.degToRad(fAngle);
+
+                highlightStepBtn(4);
+            }
+            else {
+                // Phase 5: Horizontal Plunger Eject (t: 0.80 -> 1.0)
+                phaseStr = "Phase 5: Horizontal Plunger Eject";
+                const p = (t - 0.80) / 0.20;
+                sparkParticles.material.opacity = 0;
+                gantryCarriage.position.z = -0.5;
+
+                // Plunger Pin extends horizontally forward (+Z toward front bubble)
+                const strokeFrac = Math.sin(p * Math.PI);
+                pStroke = strokeFrac * 14.0; // 14mm horizontal stroke
+                plungerPin.position.z = 0.05 + (strokeFrac * 0.28);
+
+                // Target Capsule Tablet gets pushed out horizontally (+Z) and drops down Y to chute
+                if (p > 0.25) {
+                    const dropP = (p - 0.25) / 0.75;
+                    targetCapsulePill.position.z = 0.15 + (dropP * 0.4); // Pushed out front
+                    targetCapsulePill.position.y = - (dropP * 1.4);       // Drops down into chute
+                    targetCapsulePill.rotation.x = dropP * Math.PI;
+                    opticStr = "TABLET DROP VERIFIED!";
+                    statusColor = "#38BDF8";
+                }
+
+                fAngle = 75.0;
+                highlightStepBtn(5);
+            }
+
+            // Update Telemetry UI
+            document.getElementById('t-phase').innerText = phaseStr;
+            document.getElementById('t-x').innerText = (gantryCarriage.position.x * 100).toFixed(2) + " mm";
+            document.getElementById('t-y').innerText = (gantryCarriage.position.y * 100).toFixed(2) + " mm";
+            document.getElementById('t-cutter').innerText = cDepth.toFixed(2) + " mm";
+            document.getElementById('t-flap').innerText = fAngle.toFixed(1) + "°";
+            document.getElementById('t-plunger').innerText = pStroke.toFixed(2) + " mm";
+
+            const opticElem = document.getElementById('t-optic');
+            opticElem.innerText = opticStr;
+            opticElem.style.color = statusColor;
+
+            document.getElementById('timeline-slider').value = progress;
+            document.getElementById('time-text').innerText = (t * animDuration).toFixed(2) + "s";
+        }
+
+        function highlightStepBtn(stepNum) {
+            const btns = document.querySelectorAll('.step-btn');
+            btns.forEach((btn, idx) => {
+                if (idx + 1 === stepNum) btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+        }
+
+        function goToPhase(stepNum) {
+            isPlaying = false;
+            document.getElementById('btn-play-pause').innerHTML = '<i class="fa-solid fa-play"></i>';
+            const targets = [0, 10, 28, 50, 72, 90];
+            animProgress = targets[stepNum];
+            updateVerticalMechanism(animProgress);
+        }
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            document.getElementById('btn-play-pause').innerHTML = isPlaying ? '<i class="fa-solid fa-pause"></i>' : '<i class="fa-solid fa-play"></i>';
+        }
+
+        function setCameraView(viewName) {
+            document.querySelectorAll('.btn-camera').forEach(b => b.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+
+            if (viewName === 'iso') {
+                animateCamera(new THREE.Vector3(2.4, 1.2, 2.6), new THREE.Vector3(0, 0, 0));
+            } else if (viewName === 'front') {
+                animateCamera(new THREE.Vector3(0, 0, 2.4), new THREE.Vector3(0, 0, 0));
+            } else if (viewName === 'plunger') {
+                animateCamera(new THREE.Vector3(-2.2, 0.2, -0.2), new THREE.Vector3(0, 0, 0));
+            } else if (viewName === 'chute') {
+                animateCamera(new THREE.Vector3(0.8, -1.8, 1.5), new THREE.Vector3(0, -0.8, 0.4));
+            }
+        }
+
+        function animateCamera(targetPos, targetLookAt) {
+            const startPos = camera.position.clone();
+            const startTarget = controls.target.clone();
+            let p = 0;
+
+            function stepCam() {
+                p += 0.05;
+                if (p <= 1.0) {
+                    camera.position.lerpVectors(startPos, targetPos, p);
+                    controls.target.lerpVectors(startTarget, targetLookAt, p);
+                    controls.update();
+                    requestAnimationFrame(stepCam);
+                }
+            }
+            stepCam();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isPlaying) {
+                animProgress += 0.25;
+                if (animProgress > 100) animProgress = 0;
+                updateVerticalMechanism(animProgress);
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init3D;
+    </script>
+</body>
+</html>
