@@ -1,0 +1,30 @@
+-ASH:
+
+This week we narrowed our focus to the central pill extraction mechanism of our ptoject.We mostly explored various possible configurations of our machine,including vertical ,horizontal and even a rotating mechanism which seems promising.
+We created some basic models and animations in blender showcasing how our machine would work in theory,and we plan on moving to a platform like freecad or fusion to finalize our 3d printed body.
+
+
+On the edge models side, we explored what models couldm be used for finding the boundaries of the pills in the medicine packet based on the camera input.We initially just tried an opencv approach and tried to just find the dges but that failed.We then proceeded to implement SAM-2,the open source object segmentation model thats around 600mb,which we believe is small enough to run on our target platform,th ARDUINO UNO Q(4GB RAM).
+
+Our plan for next week is to create a full fledged demo of how our system works in blender,and then start working on a 3d printable version in freecad/fusion.
+
+
+
+-HAM:
+
+
+Brainstormed several ways of applications of idea .
+and selected the best one based on timeframe and implication efficiency.
+
+trained a flask version of the model to identify the border of the meds .
+
+
+
+-FA:
+
+Started working deeply into the project. Initaly, discussed and found out some solutions for the major problems that is about the plunging out the scored strip.
+Following that, the strip loading mechanism problems diclosed and implemetation done.
+The demo animations and initial documentation created for the presentation as well as better understanding.
+The model planned for both Vertical and Horizontal methods and implemented.
+
+
