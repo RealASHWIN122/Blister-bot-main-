@@ -1,0 +1,101 @@
+#VRML_SIM R2023b utf8
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+
+WorldInfo {
+  basicTimeStep 16
+}
+Viewpoint {
+  orientation -0.315 0.315 0.895 1.7
+  position -0.3 -0.3 0.3
+}
+TexturedBackground {}
+TexturedBackgroundLight {}
+DirectionalLight {
+  direction -0.5 -0.5 -1.0
+  intensity 1.5
+}
+
+Robot {
+  name "cnc_plotter"
+  controller "void"
+  children [
+    Shape {
+      appearance PBRAppearance { baseColor 0.5 0.0 0.5 roughness 1 metalness 0 }
+      geometry Mesh { url [ "files/1.stl" ] }
+    }
+    Shape {
+      appearance PBRAppearance { baseColor 0.5 0.0 0.5 roughness 1 metalness 0 }
+      geometry Mesh { url [ "files/5.stl" ] }
+    }
+    Shape {
+      appearance PBRAppearance { baseColor 0.5 0.0 0.5 roughness 1 metalness 0 }
+      geometry Mesh { url [ "files/6.stl" ] }
+    }
+    Shape {
+      appearance PBRAppearance { baseColor 0.5 0.0 0.5 roughness 1 metalness 0 }
+      geometry Mesh { url [ "files/7.stl" ] }
+    }
+    Shape {
+      appearance PBRAppearance { baseColor 0.5 0.0 0.5 roughness 1 metalness 0 }
+      geometry Mesh { url [ "files/8.stl" ] }
+    }
+    Shape {
+      appearance PBRAppearance { baseColor 0.5 0.0 0.5 roughness 1 metalness 0 }
+      geometry Mesh { url [ "files/9.stl" ] }
+    }
+    Shape {
+      appearance PBRAppearance { baseColor 0.5 0.0 0.5 roughness 1 metalness 0 }
+      geometry Mesh { url [ "files/A.stl" ] }
+    }
+    Shape {
+      appearance PBRAppearance { baseColor 0.5 0.0 0.5 roughness 1 metalness 0 }
+      geometry Mesh { url [ "files/B.stl" ] }
+    }
+    Shape {
+      appearance PBRAppearance { baseColor 0.5 0.0 0.5 roughness 1 metalness 0 }
+      geometry Mesh { url [ "files/Arduino_mini_CNC_plotter-N1.stl" ] }
+    }
+    SliderJoint {
+      jointParameters JointParameters { axis 0 1 0 }
+      device [ LinearMotor { name "motor_y" maxVelocity 0.05 } ]
+      endPoint Solid {
+        name "y_axis"
+        children [
+          Shape {
+            appearance PBRAppearance { baseColor 0.5 0.0 0.5 roughness 1 metalness 0 }
+            geometry Mesh { url [ "files/2.stl" ] }
+          }
+          SliderJoint {
+            jointParameters JointParameters { axis 1 0 0 }
+            device [ LinearMotor { name "motor_x" maxVelocity 0.05 } ]
+            endPoint Solid {
+              name "x_axis"
+              children [
+                Shape {
+                  appearance PBRAppearance { baseColor 0.5 0.0 0.5 roughness 1 metalness 0 }
+                  geometry Mesh { url [ "files/3.stl" ] }
+                }
+                SliderJoint {
+                  jointParameters JointParameters { axis 0 0 1 }
+                  device [ LinearMotor { name "motor_z" maxVelocity 0.05 } ]
+                  endPoint Solid {
+                    name "z_axis"
+                    children [
+                      Shape {
+                        appearance PBRAppearance { baseColor 0.5 0.0 0.5 roughness 1 metalness 0 }
+                        geometry Mesh { url [ "files/4.stl" ] }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+  boundingObject Box { size 0.1 0.1 0.05 }
+  physics Physics { density -1 mass 1 }
+}

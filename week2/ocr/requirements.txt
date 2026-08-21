@@ -1,0 +1,12 @@
+streamlit
+rapidocr-onnxruntime
+pytesseract
+easyocr
+opencv-python
+psutil
+pandas
+altair
+requests
+python-doctr[torch]
+paddlepaddle
+paddleocr
