@@ -105,7 +105,7 @@ with tab1:
         selected_engines = st.multiselect(
             "Select OCR Engines to run:", 
             available_engines, 
-            default=["DocTR-Heavy", "PaddleOCR-VL", "RapidOCR"]
+            default=["PP-OCRv5"]
         )
         
         if st.button("Run OCR Comparison"):
