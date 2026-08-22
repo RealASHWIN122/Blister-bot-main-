@@ -3,3 +3,6 @@
 *.pt
 *.bin
 *.zip
+.venv/
+*.eim
+*.mp4

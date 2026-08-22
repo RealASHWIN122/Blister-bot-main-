@@ -1,0 +1,940 @@
+"""Flask app for Edge Impulse object detection demo."""
+
+# --- Imports ---
+# Standard library
+import io
+import json
+import logging
+import os
+import platform
+import re
+import socket
+import time
+from pathlib import Path
+from urllib.parse import unquote
+
+# Third-party
+import cv2
+import requests
+from flask import Flask, Response, jsonify, render_template, request
+
+# --- App and Config ---
+from utils.mock_dependencies import apply_mocks
+apply_mocks()  # Apply mocks for six and pyaudio
+from edge_impulse_linux.image import ImageImpulseRunner
+from utils.sort_tracker import SORTTracker
+
+app = Flask(__name__, static_folder='templates/assets')
+
+# --- Constants ---
+SCALE_FACTOR = 3  # Scale factor for resizing inference frames
+MAX_CAMERAS = 5
+MAX_RECONNECT_ATTEMPTS = 5
+EI_INGEST_URL = "https://ingestion.edgeimpulse.com/api/"
+EI_STUDIO_BASE_URL = "https://studio.edgeimpulse.com/v1"
+
+# --- Globals ---
+countObjects = 0
+inferenceSpeed = 0
+trackingPostprocessSpeed = 0
+bounding_boxes = []
+latest_high_res_frame = None
+last_inference_frame_size = None  # (width, height) of the frame coordinates for bounding_boxes
+runner = None
+model_info = None
+tracking_enabled = False
+tracker = None
+tracking_settings = {
+    'max_age': 5,
+    'min_hits': 3,
+    'iou_threshold': 0
+}
+
+# Source management
+current_source = {
+    'source': 'image',
+    'asset': 'rubber-duckies.jpg',
+    'rtsp_url': '',
+    'camera_index': 0,
+    'connection_status': 'connecting'
+}
+source_change_requested = False
+new_source_settings = None
+
+def get_local_ip():
+    """Get the local IP address of the machine."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
+    finally:
+        s.close()
+
+def get_compatible_models():
+    """Return a list of model files compatible with the current system."""
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    models_dir = os.path.join(os.path.dirname(__file__), "..", "models")
+    all_models = [f for f in os.listdir(models_dir) if f.endswith('.eim')]
+    compatible = []
+    if system == 'darwin' and 'arm64' in machine:
+        compatible = [f for f in all_models if 'mac-arm64' in f]
+    elif system == 'linux' and 'aarch64' in machine:
+        compatible = [f for f in all_models if 'linux-aarch64' in f]
+    return compatible
+
+def get_all_models():
+    """Return all local .eim models found in the models directory."""
+    models_dir = os.path.join(os.path.dirname(__file__), "..", "models")
+    if not os.path.isdir(models_dir):
+        return []
+    return sorted([f for f in os.listdir(models_dir) if f.endswith('.eim')])
+
+def get_models_with_compatibility():
+    compatible = set(get_compatible_models())
+    return [{
+        'name': name,
+        'compatible': name in compatible
+    } for name in get_all_models()]
+
+def _ei_headers(api_key: str):
+    return {
+        'x-api-key': api_key,
+        'accept': 'application/json',
+    }
+
+def _ei_get(api_key: str, path: str, params=None, timeout=30):
+    url = EI_STUDIO_BASE_URL + path
+    return requests.get(url, headers=_ei_headers(api_key), params=params, timeout=timeout)
+
+def _ei_post(api_key: str, path: str, params=None, json_body=None, timeout=60):
+    url = EI_STUDIO_BASE_URL + path
+    return requests.post(url, headers={**_ei_headers(api_key), 'content-type': 'application/json'}, params=params, json=json_body, timeout=timeout)
+
+def _ei_detect_project(api_key: str):
+    resp = _ei_get(api_key, '/api/projects')
+    if not resp.ok:
+        raise RuntimeError(f"Failed to list projects ({resp.status_code}): {resp.text}")
+    data = resp.json() or {}
+    projects = data.get('projects') or []
+    if not projects:
+        raise RuntimeError('No projects found for this API key')
+    project = projects[0]
+    if 'id' not in project:
+        raise RuntimeError('Unexpected projects response (missing id)')
+    return {
+        'id': int(project['id']),
+        'name': str(project.get('name') or '')
+    }
+
+def _slugify_filename(value: str):
+    value = (value or '').strip().lower()
+    value = re.sub(r'[^a-z0-9\-_. ]+', '', value)
+    value = re.sub(r'\s+', '-', value).strip('-')
+    return value or 'model'
+
+def _ensure_executable(path: Path):
+    """Ensure file is executable (adds +x bits, preserves existing permissions)."""
+    st = path.stat()
+    os.chmod(path, st.st_mode | 0o111)
+
+def init_runner(model_name=None):
+    """Initialize the Edge Impulse runner with the given model name (or default)."""
+    global runner, MODEL_PATH, model_info, current_model_name
+    models_dir = os.path.join(os.path.dirname(__file__), "..", "models")
+    compatible_models = get_compatible_models()
+    if not compatible_models:
+        raise RuntimeError("No compatible models found for this system.")
+    if model_name is None or model_name not in compatible_models:
+        model_name = compatible_models[0]
+    model_path = os.path.join(models_dir, model_name)
+    if not os.path.isfile(model_path):
+        raise FileNotFoundError(f"Model {model_name} not found in {models_dir}.")
+    MODEL_PATH = model_path
+    current_model_name = model_name
+    print(f"Selected model: {model_name}")
+    if runner:
+        runner.stop()
+    runner = ImageImpulseRunner(MODEL_PATH)
+    model_info = runner.init()
+    print(f"Model info: {model_info}")
+    print("Edge Impulse runner initialized.")
+
+def reset_tracker():
+    """Reset the object tracker state."""
+    global tracker
+    tracker = None
+
+# Track current model name
+current_model_name = None
+# Endpoint to get available models for dropdown
+@app.route('/get_models')
+def get_models():
+    """Return model filenames for dropdown.
+
+    Backwards compatible:
+    - default: returns compatible model filenames (array of strings)
+    - if ?all=1: returns all models w/ compatibility metadata
+    """
+    if request.args.get('all') == '1':
+        return jsonify(get_models_with_compatibility())
+    return jsonify(get_compatible_models())
+
+def gen_video_frames():
+    """Generate video frames from the selected source."""
+    global latest_high_res_frame, current_source, source_change_requested, new_source_settings
+    global bounding_boxes, countObjects, last_inference_frame_size, trackingPostprocessSpeed
+    cap = None
+    reconnect_attempts = 0
+    while True:
+        if source_change_requested:
+            source_change_requested = False
+            reconnect_attempts = 0
+            if cap is not None:
+                cap.release()
+                time.sleep(0.5)
+            latest_high_res_frame = None
+            last_inference_frame_size = None
+            bounding_boxes.clear()
+            countObjects = 0
+            trackingPostprocessSpeed = 0
+            current_source.update(new_source_settings)
+            current_source['connection_status'] = 'connecting'
+            print(f"Switched to source: {current_source}")
+        try:
+            src = current_source['source']
+            if src == 'camera':
+                if cap is None or not cap.isOpened():
+                    cap = cv2.VideoCapture(current_source['camera_index'])
+                    if not cap.isOpened():
+                        print(f"Failed to open camera {current_source['camera_index']}")
+                        time.sleep(1)
+                        continue
+                success, frame = cap.read()
+                if not success:
+                    print("Failed to read frame from camera")
+                    cap.release()
+                    time.sleep(1)
+                    continue
+                latest_high_res_frame = frame.copy()
+                current_source['connection_status'] = 'connected'
+                ret, buffer = cv2.imencode('.jpg', latest_high_res_frame)
+                frame = buffer.tobytes()
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                time.sleep(0.03)
+            elif src == 'image':
+                img_path = os.path.join(os.path.dirname(__file__), '..', 'assets', current_source['asset'])
+                img = cv2.imread(img_path)
+                if img is None:
+                    print(f"Image not found: {img_path}")
+                    time.sleep(1)
+                    continue
+                latest_high_res_frame = img.copy()
+                current_source['connection_status'] = 'connected'
+                ret, buffer = cv2.imencode('.jpg', latest_high_res_frame)
+                frame = buffer.tobytes()
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                time.sleep(1)
+            elif src == 'video':
+                if cap is None or not cap.isOpened():
+                    video_path = os.path.join(os.path.dirname(__file__), '..', 'assets', current_source['asset'])
+                    cap = cv2.VideoCapture(video_path)
+                    if not cap.isOpened():
+                        print(f"Failed to open video: {video_path}")
+                        time.sleep(1)
+                        continue
+                success, frame = cap.read()
+                if not success:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    time.sleep(0.1)
+                    continue
+                latest_high_res_frame = frame.copy()
+                current_source['connection_status'] = 'connected'
+                ret, buffer = cv2.imencode('.jpg', latest_high_res_frame)
+                frame = buffer.tobytes()
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                time.sleep(0.03)
+            elif src == 'rtsp':
+                if cap is None or not cap.isOpened():
+                    rtsp_url = current_source['rtsp_url'].rstrip('/')
+                    print(f"Attempting to connect to RTSP: {rtsp_url}")
+                    cap = cv2.VideoCapture()
+                    if not cap.open(rtsp_url, cv2.CAP_FFMPEG):
+                        print(f"Failed to open RTSP stream: {rtsp_url}")
+                        current_source['connection_status'] = 'disconnected'
+                        time.sleep(1)
+                        continue
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    cap.set(cv2.CAP_PROP_FPS, 30)
+                    current_source['connection_status'] = 'connected'
+                success, frame = cap.read()
+                if not success:
+                    reconnect_attempts += 1
+                    print(f"Failed to read frame from RTSP, reconnect attempt {reconnect_attempts}/{MAX_RECONNECT_ATTEMPTS}")
+                    current_source['connection_status'] = 'reconnecting'
+                    if reconnect_attempts >= MAX_RECONNECT_ATTEMPTS:
+                        print("Max reconnect attempts reached, giving up for now")
+                        current_source['connection_status'] = 'disconnected'
+                        cap.release()
+                        time.sleep(5)
+                        reconnect_attempts = 0
+                        continue
+                    cap.release()
+                    time.sleep(1)
+                    continue
+                reconnect_attempts = 0
+                latest_high_res_frame = frame.copy()
+                ret, buffer = cv2.imencode('.jpg', latest_high_res_frame)
+                frame = buffer.tobytes()
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                time.sleep(0.03)
+        except Exception as e:
+            print(f"Error in video feed: {str(e)}")
+            current_source['connection_status'] = 'disconnected'
+            if cap and cap.isOpened():
+                cap.release()
+            time.sleep(1)
+
+def gen_inference_frames():
+    """Generate inference frames with object detection."""
+    global countObjects, bounding_boxes, inferenceSpeed, latest_high_res_frame, runner, last_inference_frame_size
+
+    while True:
+        if latest_high_res_frame is None:
+            time.sleep(0.1)
+            continue
+
+        try:
+            img = cv2.cvtColor(latest_high_res_frame.copy(), cv2.COLOR_BGR2RGB)
+
+            # Try to get features with error handling
+            try:
+                features, cropped = runner.get_features_from_image(img)
+                # Store the coordinate space of the returned bounding boxes (pre SCALE_FACTOR rendering)
+                last_inference_frame_size = (int(cropped.shape[1]), int(cropped.shape[0]))
+                res = runner.classify(features)
+            except Exception as e:
+                print(f"Error during inference: {str(e)}")
+                time.sleep(0.1)
+                continue
+
+            if "result" in res:
+                cropped = cv2.resize(cropped, (cropped.shape[1] * SCALE_FACTOR, cropped.shape[0] * SCALE_FACTOR))
+                cropped = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
+                cropped = process_inference_result(res, cropped)
+
+            ret, buffer = cv2.imencode('.jpg', cropped)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+        except Exception as e:
+            print(f"Error during inference: {str(e)}")
+            time.sleep(0.1)
+
+def process_inference_result(res, cropped):
+    """Process inference results and draw bounding boxes/centroids."""
+    global countObjects, bounding_boxes, inferenceSpeed, trackingPostprocessSpeed, model_info, tracking_enabled, tracker, tracking_settings
+    countObjects = 0
+    bounding_boxes.clear()
+    inferenceSpeed = res['timing']['classification']
+    model_type = model_info['model_parameters']['model_type']
+    detections = []
+
+    if "bounding_boxes" in res["result"]:
+        for bb in res["result"]["bounding_boxes"]:
+            if bb['value'] > 0:
+                countObjects += 1
+                bounding_boxes.append({
+                    'label': bb['label'],
+                    'x': int(bb['x']),
+                    'y': int(bb['y']),
+                    'width': int(bb['width']),
+                    'height': int(bb['height']),
+                    'confidence': bb['value']
+                })
+                if model_type == 'object_detection':
+                    cropped = draw_bounding_box(cropped, bb)
+                elif model_type == 'constrained_object_detection':
+                    cropped = draw_centroids(cropped, bb)
+                if tracking_enabled:
+                    x = float(bb['x'])
+                    y = float(bb['y'])
+                    w = float(bb['width'])
+                    h = float(bb['height'])
+                    track_w = w
+                    track_h = h
+                    if model_type == 'constrained_object_detection':
+                        track_w = w * 2.0
+                        track_h = h * 2.0
+                    detections.append([x + w / 2.0, y + h / 2.0, track_w, track_h])
+
+    if tracking_enabled:
+        t0 = time.perf_counter()
+        if tracker is None:
+            tracker = SORTTracker(
+                max_age=int(tracking_settings.get('max_age', 5)),
+                min_hits=int(tracking_settings.get('min_hits', 3)),
+                iou_threshold=float(tracking_settings.get('iou_threshold', 0))
+            )
+        tracked_objects = tracker.update(detections)
+        for track_id, (cx, cy, w, h) in tracked_objects:
+            cropped = draw_track_overlay(cropped, track_id, cx, cy, w, h)
+        trackingPostprocessSpeed = round((time.perf_counter() - t0) * 1000, 2)
+    else:
+        trackingPostprocessSpeed = 0
+    return cropped
+
+def draw_bounding_box(cropped, bb):
+    """Draw bounding box for object detection models."""
+    x = int(bb['x'] * SCALE_FACTOR)
+    y = int(bb['y'] * SCALE_FACTOR)
+    width = int(bb['width'] * SCALE_FACTOR)
+    height = int(bb['height'] * SCALE_FACTOR)
+    cv2.rectangle(cropped, (x, y), (x + width, y + height), (255, 0, 0), 2)
+    label_text = f"{bb['label']}: {bb['value']:.2f}"
+    cv2.putText(cropped, label_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+    return cropped
+
+def draw_centroids(cropped, bb):
+    """Draw centroids for FOMO models."""
+    center_x = int((bb['x'] + bb['width'] / 2) * SCALE_FACTOR)
+    center_y = int((bb['y'] + bb['height'] / 2) * SCALE_FACTOR)
+    cv2.circle(cropped, (center_x, center_y), 10, (255, 0, 0), 2)
+    label_text = f"{bb['label']}: {bb['value']:.2f}"
+    cv2.putText(cropped, label_text, (int(bb['x'] * SCALE_FACTOR), int(bb['y'] * SCALE_FACTOR) - 10),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+    return cropped
+
+def draw_track_overlay(cropped, track_id, cx, cy, w, h):
+    """Draw tracking ID overlay."""
+    x1 = int((cx - w / 2.0) * SCALE_FACTOR)
+    y1 = int((cy - h / 2.0) * SCALE_FACTOR)
+    x2 = int((cx + w / 2.0) * SCALE_FACTOR)
+    y2 = int((cy + h / 2.0) * SCALE_FACTOR)
+    # cv2.rectangle(cropped, (x1, y1), (x2, y2), (255, 0, 0), 1)
+    cv2.putText(cropped, f"ID: {track_id}", (x1, max(0, y1 - 30)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+    return cropped
+
+@app.route('/get_assets')
+def get_assets():
+    """Get available images/videos from assets folder - restored working version"""
+    asset_type = request.args.get('type', 'image')
+    assets_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'assets'))
+
+    print(f"\n=== DEBUG INFO ===")
+    print(f"Looking for {asset_type} in: {assets_dir}")
+    print(f"Directory exists: {os.path.exists(assets_dir)}")
+
+    assets = []
+    if os.path.exists(assets_dir):
+        print("Files in directory:")
+        for file in os.listdir(assets_dir):
+            file_path = os.path.join(assets_dir, file)
+            if os.path.isfile(file_path):
+                print(f"  - {file}")
+                if asset_type == 'image' and file.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.webp')):
+                    assets.append(file)
+                elif asset_type == 'video' and file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+                    assets.append(file)
+
+    print(f"Found {len(assets)} {asset_type}s: {assets}")
+    return jsonify(assets)
+
+@app.route('/get_cameras', methods=['GET'])
+def get_cameras():
+    """Get available connected cameras"""
+    cameras = []
+    for i in range(MAX_CAMERAS):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            cameras.append(i)
+            cap.release()
+    return jsonify(cameras)
+
+@app.route('/set_source', methods=['POST'])
+def set_source():
+    global source_change_requested, new_source_settings, current_model_name, tracking_enabled, tracking_settings
+    data = request.get_json()
+    requested_model = data.get('modelName')
+    # If model changed, re-init runner
+    if requested_model and requested_model != current_model_name:
+        try:
+            init_runner(requested_model)
+            reset_tracker()
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)})
+    if 'trackObjects' in data:
+        new_tracking = bool(data.get('trackObjects'))
+        if new_tracking != tracking_enabled:
+            tracking_enabled = new_tracking
+            reset_tracker()
+    if 'trackMaxAge' in data or 'trackMinHits' in data or 'trackIouThreshold' in data:
+        try:
+            tracking_settings['max_age'] = max(1, int(data.get('trackMaxAge', tracking_settings['max_age'])))
+        except Exception:
+            tracking_settings['max_age'] = 5
+        try:
+            tracking_settings['min_hits'] = max(1, int(data.get('trackMinHits', tracking_settings['min_hits'])))
+        except Exception:
+            tracking_settings['min_hits'] = 3
+        try:
+            iou_val = float(data.get('trackIouThreshold', tracking_settings['iou_threshold']))
+            tracking_settings['iou_threshold'] = min(1.0, max(0.0, iou_val))
+        except Exception:
+            tracking_settings['iou_threshold'] = 0.01
+        reset_tracker()
+    new_source_settings = {
+        'source': data.get('source', 'image'),
+        'asset': data.get('asset', 'rubber-duckies.jpg'),
+        'rtsp_url': data.get('rtspUrl', ''),
+        'camera_index': data.get('cameraIndex', 0)
+    }
+    source_change_requested = True
+    return jsonify({'status': 'success'})
+
+@app.route('/get_connection_status')
+def get_connection_status():
+    """Get the current connection status."""
+    return jsonify({
+        'status': current_source['connection_status'],
+        'source': current_source['source']
+    })
+
+@app.route('/')
+def index():
+    """Render the main page."""
+    return render_template('index.html')
+
+@app.route('/video_feed')
+def video_feed():
+    """Video feed endpoint."""
+    return Response(gen_video_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/inference_feed')
+def inference_feed():
+    """Inference feed endpoint."""
+    return Response(gen_inference_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/inference_speed')
+def inference_speed():
+    """Stream inference speed."""
+    def generate():
+        while True:
+            yield f"data:{inferenceSpeed}\n\n"
+            time.sleep(0.1)
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.route('/tracking_postprocess_speed')
+def tracking_postprocess_speed():
+    """Stream tracking postprocessing speed."""
+    def generate():
+        while True:
+            yield f"data:{trackingPostprocessSpeed}\n\n"
+            time.sleep(0.1)
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.route('/object_counter')
+def object_counter():
+    """Stream object count."""
+    def generate():
+        while True:
+            yield f"data:{countObjects}\n\n"
+            time.sleep(0.1)
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.route('/upload_edge_impulse', methods=['POST'])
+def upload_edge_impulse():
+    data = request.get_json() or {}
+    api_key = data.get('apiKey')
+    category = data.get('category', 'training')
+    include_labels = bool(data.get('includeLabels', False))
+    if not api_key:
+        return jsonify({'status': 'error', 'message': 'Missing API key'}), 400
+
+    if category not in ['training', 'testing', 'split']:
+        return jsonify({'status': 'error', 'message': 'Invalid category'}), 400
+
+    if latest_high_res_frame is None:
+        return jsonify({'status': 'error', 'message': 'No frame available yet. Wait for the Original feed to load.'}), 409
+
+    try:
+        # Encode the latest frame as JPEG
+        ok, buffer = cv2.imencode('.jpg', latest_high_res_frame)
+        if not ok:
+            return jsonify({'status': 'error', 'message': 'Failed to encode JPEG'}), 500
+
+        filename = f"original-{int(time.time())}.jpg"
+        files = {'data': (filename, io.BytesIO(buffer.tobytes()), 'image/jpeg')}
+        headers = {'x-api-key': api_key}
+
+        if include_labels:
+            # Scale bounding boxes from inference/cropped space to original frame space
+            boxes_for_upload = []
+            orig_h, orig_w = int(latest_high_res_frame.shape[0]), int(latest_high_res_frame.shape[1])
+            inf_w, inf_h = (last_inference_frame_size or (orig_w, orig_h))
+
+            # Guard against division by zero
+            if inf_w <= 0 or inf_h <= 0:
+                inf_w, inf_h = orig_w, orig_h
+
+            scale_x = orig_w / inf_w
+            scale_y = orig_h / inf_h
+
+            for bb in (bounding_boxes or []):
+                x = int(round(int(bb.get('x', 0)) * scale_x))
+                y = int(round(int(bb.get('y', 0)) * scale_y))
+                w = int(round(int(bb.get('width', 0)) * scale_x))
+                h = int(round(int(bb.get('height', 0)) * scale_y))
+                boxes_for_upload.append({
+                    'x': x,
+                    'y': y,
+                    'width': w,
+                    'height': h,
+                    'label': str(bb.get('label', ''))
+                })
+
+            headers['x-bounding-boxes'] = json.dumps(boxes_for_upload)
+        url = EI_INGEST_URL + f"{category}/files"
+        resp = requests.post(url, files=files, headers=headers, params={'filename': filename}, timeout=30)
+
+        if 200 <= resp.status_code < 300:
+            return jsonify({'status': 'success'})
+
+        return jsonify({'status': 'error', 'message': resp.text, 'status_code': resp.status_code}), resp.status_code
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/ei/studio_info', methods=['POST'])
+def ei_studio_info():
+    """Return project info, impulses, and linux deployment targets for the API key."""
+    data = request.get_json() or {}
+    api_key = (data.get('apiKey') or '').strip()
+    if not api_key:
+        return jsonify({'status': 'error', 'message': 'Missing API key'}), 400
+
+    try:
+        project = _ei_detect_project(api_key)
+        project_id = project['id']
+
+        impulses_resp = _ei_get(api_key, f'/api/{project_id}/impulses')
+        if not impulses_resp.ok:
+            return jsonify({'status': 'error', 'message': f"Failed to list impulses ({impulses_resp.status_code}): {impulses_resp.text}"}), 502
+        impulses_json = impulses_resp.json() or {}
+        impulses = impulses_json.get('impulses') or []
+        impulses = [{'id': int(i.get('id')), 'name': str(i.get('name') or f"Impulse {i.get('id')}")}
+                    for i in impulses if i.get('id') is not None]
+
+        targets_resp = _ei_get(api_key, f'/api/{project_id}/deployment/targets')
+        if not targets_resp.ok:
+            return jsonify({'status': 'error', 'message': f"Failed to list deployment targets ({targets_resp.status_code}): {targets_resp.text}"}), 502
+        targets_json = targets_resp.json() or {}
+        targets = targets_json.get('targets') or []
+
+        linux_targets = []
+        macos_targets = []
+        for t in targets:
+            hay = ' '.join([
+                str(t.get('format') or ''),
+                str(t.get('name') or ''),
+                str(t.get('description') or ''),
+                str(t.get('uiSection') or ''),
+            ]).lower()
+            entry = {
+                'format': str(t.get('format') or ''),
+                'name': str(t.get('name') or ''),
+                'description': str(t.get('description') or ''),
+                'preferredEngine': t.get('preferredEngine'),
+                'supportedEngines': t.get('supportedEngines') or [],
+            }
+            if not entry['format']:
+                continue
+            if 'linux' in hay:
+                linux_targets.append(entry)
+            # Heuristic: EI tends to use 'mac' in name/description/format.
+            if 'macos' in hay or 'mac os' in hay or re.search(r'\bmac\b', hay) or 'darwin' in hay:
+                macos_targets.append(entry)
+
+        linux_targets.sort(key=lambda x: (x.get('format') or '', x.get('name') or ''))
+        macos_targets.sort(key=lambda x: (x.get('format') or '', x.get('name') or ''))
+
+        return jsonify({
+            'status': 'success',
+            'project': project,
+            'impulses': impulses,
+            'linuxTargets': linux_targets,
+            'macosTargets': macos_targets,
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+
+@app.route('/ei/deployment/start', methods=['POST'])
+def ei_deployment_start():
+    """Start a deployment build job.
+    Uses a dedicated deployment API key (deployApiKey) when provided.
+    Adds logging for timing and key events.
+    """
+    data = request.get_json() or {}
+    api_key = (data.get('deployApiKey') or data.get('apiKey') or '').strip()
+    if not api_key:
+        app.logger.warning("[EI DEPLOY START] Missing API key")
+        return jsonify({'status': 'error', 'message': 'Missing API key'}), 400
+
+    try:
+        t0 = time.time()
+        project_id = int(data.get('projectId') or _ei_detect_project(api_key)['id'])
+        impulse_id = data.get('impulseId')
+        deployment_type = (data.get('deploymentType') or '').strip()
+        if impulse_id is not None:
+            impulse_id = int(impulse_id)
+        if not deployment_type:
+            app.logger.warning(f"[EI DEPLOY START] Missing deploymentType (project_id={project_id})")
+            return jsonify({'status': 'error', 'message': 'Missing deploymentType'}), 400
+
+        quantization = (data.get('quantization') or 'float32').strip().lower()
+        if quantization not in ['float32', 'int8']:
+            app.logger.warning(f"[EI DEPLOY START] Invalid quantization: {quantization} (project_id={project_id})")
+            return jsonify({'status': 'error', 'message': 'Invalid quantization (use float32 or int8)'}), 400
+
+        engine = 'tflite'
+        params = {'type': deployment_type}
+        if impulse_id is not None:
+            params['impulseId'] = impulse_id
+
+        app.logger.info(f"[EI DEPLOY START] Build requested: project_id={project_id}, impulse_id={impulse_id}, type={deployment_type}, quant={quantization}, engine={engine}")
+        t1 = time.time()
+        resp = _ei_post(
+            api_key,
+            f'/api/{project_id}/jobs/build-ondevice-model',
+            params=params,
+            json_body={'engine': engine, 'modelType': quantization},
+            timeout=60,
+        )
+        t2 = time.time()
+        app.logger.info(f"[EI DEPLOY START] Build POST returned in {t2-t1:.2f}s (status={resp.status_code})")
+        if not resp.ok:
+            app.logger.error(f"[EI DEPLOY START] Build failed: {resp.status_code} {resp.text}")
+            return jsonify({'status': 'error', 'message': f"Failed to start build job ({resp.status_code}): {resp.text}"}), 502
+        j = resp.json() or {}
+        app.logger.info(f"[EI DEPLOY START] Build job started: jobId={j.get('id')}, deploymentVersion={j.get('deploymentVersion')}, total={t2-t0:.2f}s")
+        return jsonify({
+            'status': 'success',
+            'projectId': project_id,
+            'deploymentType': deployment_type,
+            'engine': engine,
+            'quantization': quantization,
+            'jobId': j.get('id'),
+            'deploymentVersion': j.get('deploymentVersion'),
+        })
+    except Exception as e:
+        app.logger.exception(f"[EI DEPLOY START] Exception: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/ei/deployment/status', methods=['POST'])
+def ei_deployment_status():
+    """Poll job status and return all logs (not just a tail)."""
+    data = request.get_json() or {}
+    api_key = (data.get('deployApiKey') or data.get('apiKey') or '').strip()
+    if not api_key:
+        return jsonify({'status': 'error', 'message': 'Missing API key'}), 400
+
+    try:
+        project_id = int(data.get('projectId') or _ei_detect_project(api_key)['id'])
+        job_id = data.get('jobId')
+        if job_id is None:
+            return jsonify({'status': 'error', 'message': 'Missing jobId'}), 400
+        job_id = int(job_id)
+
+        status_resp = _ei_get(api_key, f'/api/{project_id}/jobs/{job_id}/status', timeout=30)
+        if not status_resp.ok:
+            return jsonify({'status': 'error', 'message': f"Failed to get job status ({status_resp.status_code}): {status_resp.text}"}), 502
+        status_json = status_resp.json() or {}
+        job = (status_json.get('job') or {})
+
+        logs_all = []
+        try:
+            # Fetch all logs (no limit)
+            stdout_resp = _ei_get(api_key, f'/api/{project_id}/jobs/{job_id}/stdout', timeout=30)
+            if stdout_resp.ok:
+                stdout_json = stdout_resp.json() or {}
+                stdout = stdout_json.get('stdout') or []
+                logs_all = [str(x.get('data') or '') for x in stdout]
+        except Exception:
+            logs_all = []
+
+        finished = bool(job.get('finished'))
+        finished_successful = job.get('finishedSuccessful')
+
+        return jsonify({
+            'status': 'success',
+            'projectId': project_id,
+            'job': {
+                'id': job.get('id'),
+                'category': job.get('category'),
+                'created': job.get('created'),
+                'started': job.get('started'),
+                'finished': job.get('finished'),
+                'finishedSuccessful': finished_successful,
+            },
+            'finished': finished,
+            'success': bool(finished_successful) if finished else None,
+            'logsAll': logs_all,
+            'logsTail': logs_all[-10:] if logs_all else [],
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+
+@app.route('/ei/deployment/download', methods=['POST'])
+def ei_deployment_download():
+    """Download a deployment artifact (latest or specific version) and store it in models/.
+    Adds logging for timing and key events.
+    """
+    data = request.get_json() or {}
+    api_key = (data.get('deployApiKey') or data.get('apiKey') or '').strip()
+    if not api_key:
+        app.logger.warning("[EI DEPLOY DOWNLOAD] Missing API key")
+        return jsonify({'status': 'error', 'message': 'Missing API key'}), 400
+
+    try:
+        t0 = time.time()
+        project_id = int(data.get('projectId') or _ei_detect_project(api_key)['id'])
+        deployment_version = data.get('deploymentVersion')
+        deployment_type = str(data.get('deploymentType') or '').strip()
+        quantization = str(data.get('quantization') or 'float32').strip().lower()
+        engine = str(data.get('engine') or 'tflite').strip()
+        impulse_id = data.get('impulseId')
+        if impulse_id not in [None, '']:
+            try:
+                impulse_id = int(impulse_id)
+            except Exception:
+                impulse_id = None
+        else:
+            impulse_id = None
+
+        models_dir = Path(os.path.join(os.path.dirname(__file__), "..", "models")).resolve()
+        models_dir.mkdir(parents=True, exist_ok=True)
+
+        download_params = None
+        if deployment_version is not None:
+            try:
+                deployment_version = int(deployment_version)
+            except (TypeError, ValueError):
+                app.logger.warning(f"[EI DEPLOY DOWNLOAD] Invalid deploymentVersion: {deployment_version} (project_id={project_id})")
+                return jsonify({'status': 'error', 'message': 'deploymentVersion must be an integer', 'projectId': project_id}), 400
+        else:
+            if not deployment_type:
+                app.logger.warning(f"[EI DEPLOY DOWNLOAD] Missing deploymentType (project_id={project_id})")
+                return jsonify({'status': 'error', 'message': 'Missing deploymentType when deploymentVersion is not provided', 'projectId': project_id}), 400
+
+            info_params = {'type': deployment_type}
+            if quantization in ['float32', 'int8']:
+                info_params['modelType'] = quantization
+            if engine:
+                info_params['engine'] = engine
+            if impulse_id is not None:
+                info_params['impulseId'] = impulse_id
+
+            app.logger.info(f"[EI DEPLOY DOWNLOAD] Checking deployment info: project_id={project_id}, type={deployment_type}, quant={quantization}, engine={engine}, impulse_id={impulse_id}")
+            t1 = time.time()
+            info_resp = _ei_get(api_key, f'/api/{project_id}/deployment', params=info_params, timeout=30)
+            t2 = time.time()
+            app.logger.info(f"[EI DEPLOY DOWNLOAD] Deployment info GET returned in {t2-t1:.2f}s (status={info_resp.status_code})")
+            if info_resp.status_code == 404:
+                app.logger.info(f"[EI DEPLOY DOWNLOAD] No deployment found (404)")
+                return jsonify({'status': 'not-found', 'message': 'No deployment found matching the requested target', 'projectId': project_id}), 404
+            info_json = info_resp.json() or {}
+            if not info_resp.ok:
+                app.logger.error(f"[EI DEPLOY DOWNLOAD] Deployment info error: {info_resp.status_code} {info_resp.text}")
+                return jsonify({'status': 'error', 'message': f"Failed to check deployment info ({info_resp.status_code}): {info_resp.text}", 'projectId': project_id}), 502
+            if not info_json.get('success', True):
+                app.logger.error(f"[EI DEPLOY DOWNLOAD] Deployment info not successful: {info_json.get('error')}")
+                return jsonify({'status': 'error', 'message': info_json.get('error') or 'Deployment info request failed', 'projectId': project_id}), 502
+            if not info_json.get('hasDeployment'):
+                app.logger.info(f"[EI DEPLOY DOWNLOAD] No deployment found (hasDeployment false)")
+                return jsonify({'status': 'not-found', 'message': 'No deployment found matching the requested target', 'projectId': project_id}), 404
+            deployment_version = info_json.get('version')
+            if deployment_version is None:
+                app.logger.error(f"[EI DEPLOY DOWNLOAD] Deployment info response missing version")
+                return jsonify({'status': 'error', 'message': 'Deployment info response missing version', 'projectId': project_id}), 502
+            deployment_version = int(deployment_version)
+
+        rel_path = f'/api/{project_id}/deployment/history/{deployment_version}/download'
+        url = EI_STUDIO_BASE_URL + rel_path
+        app.logger.info(f"[EI DEPLOY DOWNLOAD] Downloading artifact: project_id={project_id}, version={deployment_version}, type={deployment_type}, quant={quantization}, engine={engine}, impulse_id={impulse_id}")
+        t3 = time.time()
+        r = requests.get(url, headers=_ei_headers(api_key), params=download_params, stream=True, timeout=120)
+        t4 = time.time()
+        app.logger.info(f"[EI DEPLOY DOWNLOAD] Download request returned in {t4-t3:.2f}s (status={r.status_code})")
+        if not r.ok:
+            app.logger.error(f"[EI DEPLOY DOWNLOAD] Download failed: {r.status_code} {r.text}")
+            return jsonify({'status': 'error', 'message': f"Failed to download deployment ({r.status_code}): {r.text}", 'projectId': project_id}), 502
+
+        filename = None
+        cd = r.headers.get('content-disposition')
+        if cd:
+            filename_basic = None
+            filename_star = None
+            for part in cd.split(';'):
+                part = part.strip()
+                if part.lower().startswith('filename*='):
+                    filename_star = part.split('=', 1)[1].strip()
+                elif part.lower().startswith('filename='):
+                    filename_basic = part.split('=', 1)[1].strip()
+            if filename_star:
+                value = filename_star.strip('"')
+                try:
+                    _, encoded = value.split("''", 1)
+                except ValueError:
+                    encoded = value
+                filename = unquote(encoded)
+            elif filename_basic:
+                filename = filename_basic.strip('"')
+        if filename:
+            filename = os.path.basename(filename)
+        if not filename:
+            if deployment_version is not None:
+                filename = f"deployment-{deployment_version}.eim"
+            else:
+                safe_type = _slugify_filename(deployment_type) or 'deployment'
+                filename = f"{safe_type}.eim"
+
+        out_path = models_dir / filename
+        t5 = time.time()
+        with open(out_path, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=1024 * 256):
+                if chunk:
+                    f.write(chunk)
+        t6 = time.time()
+        _ensure_executable(out_path)
+        app.logger.info(f"[EI DEPLOY DOWNLOAD] Saved artifact to {out_path} ({os.path.getsize(out_path)} bytes) in {t6-t5:.2f}s, total={t6-t0:.2f}s")
+
+        return jsonify({
+            'status': 'success',
+            'projectId': project_id,
+            'deploymentVersion': deployment_version,
+            'savedModels': [out_path.name],
+            'models': get_models_with_compatibility(),
+        })
+    except Exception as e:
+        app.logger.exception(f"[EI DEPLOY DOWNLOAD] Exception: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+if __name__ == '__main__':
+    # Ensure our app.logger.info(...) lines show up in the terminal
+    app.logger.setLevel(logging.INFO)
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
+    init_runner()
+    local_ip = get_local_ip()
+    print(f"Server running at: http://{local_ip}:5001")
+    app.run(host="0.0.0.0", port=5001, debug=True)
+    

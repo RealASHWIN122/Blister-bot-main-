@@ -1,0 +1,7 @@
+edge-impulse-linux==1.2.2
+opencv-python-headless
+flask
+numpy
+requests
+filterpy
+scipy
