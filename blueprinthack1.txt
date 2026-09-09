@@ -1,0 +1,96 @@
+Intelligent Edge-AI Medicine Dispenser
+
+Hardware Platform: Arduino UNO Q
+Development Environment: Arduino App Lab
+
+1. Project Overview
+
+The project is a localized, fully offline, AI-powered medicine dispenser. It operates like a smart miniature vending machine designed to remind patients to take their medications and physically dispense them safely. By utilizing the dual-processor architecture of the Arduino UNO Q (Qualcomm Dragonwing QRB2210 + STM32U585 MCU), the device handles heavy natural language processing and computer vision on the Linux side, while maintaining hard real-time mechanical control on the microcontroller side.
+
+2. Core Features
+
+Voice-Enabled Contextual LLM Interface: Users interact with the machine using natural language. The system goes beyond basic commands to act as a conversational health assistant.
+
+Proactive Check-ins: At scheduled times, the LLM asks clarifying questions (e.g., "It is noon. Are you ready for your pills? Have you had lunch? You need to eat before I dispense your afternoon medication.").
+
+Pharmacological Guidance: The LLM acts as an offline medical encyclopedia. It can intelligently answer queries like, "Should I take this pill with the other pill?" or explain the specific side effects of taking (or skipping) a medication.
+
+Query Resolution: Patients can ask, "Did I take my morning pills?" and the LLM will query the local database to provide an accurate answer.
+
+Overdose Prevention & Dosage Tracking:
+The system strictly understands dosage thresholds. It tracks exactly when the last pill was taken. If a patient requests medication too early, the LLM will deny the request, state the time of the previous dose, and remind them of the next safe window to prevent accidental overdose.
+
+Comprehensive Vision & Smart Display System:
+
+On-Device Dashboard: A built-in mini screen (TFT/LCD) acts as the machine's primary visual interface. It provides at-a-glance information including the number of pills remaining in the inventory, the exact time the last medication was taken, and renders simple visual graphs showing the patient's pill consumption frequency.
+
+Prescription OCR & Auto-Scheduling: The camera can read a printed prescription, extract the drug name and dosage intervals, and automatically build the patient's schedule in the local database.
+
+Patient ID (Face Recognition): Unlocks and dispenses only for the authorized patient or caregiver.
+
+Medicine ID & Visual Identification: Identifies loose pills or blister packs via the camera based on visual input (color, shape, imprints) before they are loaded to prevent medication mix-ups.
+
+Visual Cross-Check (Caretaker Mode): An optional safety feature where caregivers take a master photo of all the pills for a specific time period. This image is stored and displayed on the machine's integrated screen at the time of dispensing, allowing the patient to manually verify their dispensed meds match the caregiver's image.
+
+Action Recognition: Tracks the patient's hand to verify the pill was actually consumed, not just dispensed.
+
+"Daily Pod" Preservation System:
+Pills are highly hygroscopic and lose potency if left in a plastic carousel. This machine accepts 3D-printed, airtight "pods". Caregivers place medications (still sealed in their cut aluminum blister packs) into these pods. The machine dispenses the entire pod, ensuring 100% medication integrity.
+
+Intermittent Cloud Telemetry (When Online):
+While designed to work completely offline, if the device connects to Wi-Fi, it securely pushes data to a caregiver dashboard. It syncs:
+
+Adherence logs (pills taken vs. pills skipped).
+
+Erratic behavior flags (based on unusual camera activity or failed facial recognitions).
+
+Inventory levels and automated refill alerts when a specific medication is running low.
+
+Zero-Latency Hardware Execution:
+The AI does not interfere with the motors. The AI (Linux side) sends a simple Remote Procedure Call (RPC) across an internal bridge to the Microcontroller (STM32 side), which executes the physical motor rotation perfectly every time.
+
+3. The "Most Relevant Tools" Tech Stack
+
+To build this, the 4-member team will use the most modern, optimized tools available for the Arduino UNO Q ecosystem.
+
+A. Development Environment (The Core)
+
+Arduino App Lab: This is the unified software environment. It allows the team to write Python scripts for the AI, C++ sketches for the motors, and use pre-built AI "Bricks" all in one single, cross-platform interface.
+
+B. Edge AI & Vision
+
+Edge Impulse: Integrated directly into Arduino App Lab via "Bricks." This will be used to train the YOLO-nano object detection model to recognize specific medicine blister packs and loose pills.
+
+llama.cpp & Whisper.cpp / Vosk: The most efficient C++ engines for running quantized LLMs (like TinyLlama) and Speech-to-Text locally on the ARM Cortex-A CPU without cloud latency.
+
+MediaPipe / OpenCV / Tesseract (Python): Used within App Lab's Python environment for Face Recognition, Pose/Action tracking, and Optical Character Recognition (OCR) for reading prescriptions.
+
+C. Firmware & Hardware Control
+
+Arduino C++ (via App Lab): The language used to program the STM32 MCU.
+
+AccelStepper Library: The industry standard for smooth, non-blocking stepper motor control. Essential for rotating the heavy pod carousel accurately without relying on delay() commands.
+
+TFT/LCD Display Drivers & UI Libraries (e.g., LVGL): Required for rendering the on-device interactive dashboard (graphs, pill stats) and displaying the stored "Visual Cross-Check" images to the user during the dispensing process.
+
+D. Mechanical Design & 3D Printing
+
+Tinkercad: Used only for the first 48 hours of rapid, blocky prototyping to understand physical scale.
+
+Autodesk Fusion 360 (or Onshape): The final, most relevant CAD tool. It uses parametric modeling, meaning if a 3D-printed pill pod is 1mm too small, you change a single number and the entire mechanism mathematically scales and adjusts to fit.
+
+Slicer (UltiMaker Cura / PrusaSlicer): To generate the G-code for 3D printing the chassis and carousel at local FabLabs (e.g., KSUM in Kerala).
+
+E. Caretaker Dashboard & Cloud Telemetry (Systems Integrator Role)
+
+This domain is owned by the Systems Integrator. Because they already manage the local Python database (pill inventory, scheduling, adherence), they are best positioned to build the pipeline that pushes this data to the cloud when Wi-Fi is detected.
+
+Backend / Real-Time Database: Firebase or Supabase. These are perfect for IoT telemetry because they offer secure, real-time database syncing, offline-caching, and built-in user authentication for the caretakers.
+
+Frontend (Dashboard UI): Next.js (React) for a highly responsive, easily deployable web dashboard, or Flutter if the team prefers to build a native mobile app for iOS/Android. This is where the caretaker logs in to see adherence graphs, erratic behavior alerts, and pill inventory.
+
+Device-to-Cloud Protocol: MQTT (Paho-MQTT) or standard Python REST requests running on the Linux side of the Uno Q to securely push structured JSON payloads to the cloud backend.
+
+4. Future Works & Alternative Mechanics
+
+Automated Blister Pack Stripper: In a future iteration, the manual "Daily Pod" system will be replaced by a direct-feed mechanism. Caregivers will drop entire, un-cut aluminum blister sheets into a secure hopper. At the exact time of dosage, a 2-axis CNC-style stepper mechanism will align a mechanical plunger over the correct coordinate and physically strip/extract the pill through the foil directly into the patient's delivery chute. This completely automates the loading process while maintaining the pharmaceutical seal until the moment of consumption.

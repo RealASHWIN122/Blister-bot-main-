@@ -1,0 +1,7 @@
+transformers
+torch
+sounddevice
+scipy
+Pillow
+luma.lcd
+llama-cpp-python
