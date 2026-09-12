@@ -1,31 +1,49 @@
 from flask import Flask, render_template, request, jsonify
-import serial
+import socket
 import time
 import atexit
 
 app = Flask(__name__)
 
-# --- Serial Connection Management ---
-ser = None
-try:
-    ser = serial.Serial('/dev/ttyGS0', 115200, timeout=0.5)
-    print("Successfully connected to MCU on /dev/ttyGS0")
-except Exception as e:
-    print(f"Error opening serial port: {e}")
+# --- Socket Connection Management ---
+def get_mcu_socket():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(('127.0.0.1', 7500))
+        s.settimeout(5.0)
+        return s
+    except Exception as e:
+        print(f"Error opening MCU socket: {e}")
+        return None
 
 def rotate_steps(axis, steps):
-    if ser and ser.is_open:
-        command = f"{axis} {steps}\n"
-        ser.write(command.encode('utf-8'))
-        ser.flush()
-        # Wait for acknowledgment
-        start_time = time.time()
-        while time.time() - start_time < 5.0:
-            if ser.in_waiting > 0:
-                resp = ser.readline().decode('utf-8', errors='ignore').strip()
-                if resp == f"ACK:{axis}":
-                    return True
-        return False
+    s = get_mcu_socket()
+    if s:
+        try:
+            command = f"{axis} {steps}\n"
+            s.sendall(command.encode('utf-8'))
+            
+            # Wait for acknowledgment
+            start_time = time.time()
+            buffer = ""
+            while time.time() - start_time < 5.0:
+                try:
+                    data = s.recv(1024)
+                    if data:
+                        buffer += data.decode('utf-8', errors='ignore')
+                        if f"ACK:{axis}" in buffer:
+                            s.close()
+                            return True
+                except socket.timeout:
+                    break
+            
+            s.close()
+            return False
+        except Exception as e:
+            print(f"Error communicating with MCU: {e}")
+            if s:
+                s.close()
+            return False
     else:
         print(f"MOCK: Sent {steps} steps to {axis} axis")
         time.sleep(abs(steps) * 0.002)
@@ -60,12 +78,6 @@ def move():
             return jsonify({"status": "error", "message": "MCU communication failed"}), 500
     else:
         return jsonify({"status": "error", "message": "Invalid axis"}), 400
-
-def cleanup():
-    if ser and ser.is_open:
-        ser.close()
-
-atexit.register(cleanup)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini 2D CNC Plotter</title>
+    <!-- Use Inter font for a modern look -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Color Palette for Dark Theme */
+            --bg-base: #0f172a;
+            --bg-panel: #1e293b;
+            --bg-input: #0b1120;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --accent: #8b5cf6;
+            --accent-hover: #7c3aed;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --danger: #ef4444;
+            --success: #10b981;
+            --border: #334155;
+            --radius: 16px;
+            --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* Main Container Styling */
+        .container {
+            background-color: var(--bg-panel);
+            padding: 35px 25px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 420px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            margin-bottom: 8px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 35px;
+            font-weight: 400;
+        }
+
+        /* D-Pad Layout */
+        .d-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 85px);
+            grid-template-rows: repeat(3, 85px);
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 35px;
+        }
+
+        .btn {
+            background-color: var(--bg-panel);
+            border: 2px solid var(--border);
+            color: var(--text-main);
+            border-radius: 14px;
+            font-size: 1.25rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.03), 0 4px 6px rgba(0, 0, 0, 0.2);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Micro-animations */
+        .btn:active {
+            transform: scale(0.92);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Grid Placement */
+        .btn.up { grid-column: 2; grid-row: 1; }
+        .btn.left { grid-column: 1; grid-row: 2; }
+        .btn.right { grid-column: 3; grid-row: 2; }
+        .btn.down { grid-column: 2; grid-row: 3; }
+
+        /* Y Axis Interactions (Primary Color) */
+        .btn.up:active, .btn.down:active { background-color: var(--primary); border-color: var(--primary); }
+        .btn.up:hover { border-color: var(--primary); color: var(--primary); }
+        .btn.down:hover { border-color: var(--primary); color: var(--primary); }
+
+        /* X Axis Interactions (Accent Color) */
+        .btn.left:active, .btn.right:active { background-color: var(--accent); border-color: var(--accent); }
+        .btn.left:hover { border-color: var(--accent); color: var(--accent); }
+        .btn.right:hover { border-color: var(--accent); color: var(--accent); }
+
+        .btn:active { color: white !important; }
+
+        /* Center decorative dot */
+        .center-dot {
+            grid-column: 2;
+            grid-row: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .center-dot::after {
+            content: '';
+            width: 24px;
+            height: 24px;
+            background-color: var(--border);
+            border-radius: 50%;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        /* Step Distance Input */
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            text-align: left;
+            margin-bottom: 25px;
+        }
+
+        .controls label {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .controls input {
+            background-color: var(--bg-input);
+            border: 2px solid var(--border);
+            color: var(--text-main);
+            padding: 14px 18px;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 500;
+            width: 100%;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .controls input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        
+        /* Status Indicator */
+        .status-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 10px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success);
+            transition: background-color 0.3s;
+        }
+
+        #status-text {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        /* Mobile Adjustments */
+        @media (max-width: 480px) {
+            .d-pad {
+                grid-template-columns: repeat(3, 75px);
+                grid-template-rows: repeat(3, 75px);
+                gap: 12px;
+            }
+            .container {
+                padding: 25px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Mini CNC Plotter</h1>
+        <p class="subtitle">Uno Q Control Panel</p>
+
+        <div class="d-pad">
+            <button class="btn up" onclick="triggerMove('Y', 1)">Y+</button>
+            <button class="btn left" onclick="triggerMove('X', -1)">X-</button>
+            <div class="center-dot"></div>
+            <button class="btn right" onclick="triggerMove('X', 1)">X+</button>
+            <button class="btn down" onclick="triggerMove('Y', -1)">Y-</button>
+        </div>
+
+        <div class="controls">
+            <label for="steps">Step Distance (Per Click)</label>
+            <input type="number" id="steps" value="10" min="1" max="1000">
+        </div>
+        
+        <div class="status-container">
+            <div class="status-indicator" id="status-indicator"></div>
+            <div id="status-text">System Ready</div>
+        </div>
+    </div>
+
+    <script>
+        const statusText = document.getElementById('status-text');
+        const statusIndicator = document.getElementById('status-indicator');
+        const stepInput = document.getElementById('steps');
+        
+        let isMoving = false;
+
+        async function triggerMove(axis, direction) {
+            if (isMoving) return;
+            
+            const steps = parseInt(stepInput.value);
+            if (isNaN(steps) || steps <= 0) {
+                setStatus('Invalid step value', 'var(--danger)');
+                return;
+            }
+
+            isMoving = true;
+            setStatus(`Moving ${axis} ${direction > 0 ? '+' : '-'}${steps}...`, 'var(--primary)');
+            
+            try {
+                const response = await fetch('/api/move', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ axis, direction, steps })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    setStatus('System Ready', 'var(--success)');
+                } else {
+                    setStatus(`Error: ${data.message}`, 'var(--danger)');
+                }
+            } catch (error) {
+                setStatus('Connection error. Server running?', 'var(--danger)');
+                console.error('Error:', error);
+            } finally {
+                isMoving = false;
+            }
+        }
+
+        function setStatus(text, color) {
+            statusText.textContent = text;
+            statusText.style.color = color === 'var(--success)' ? 'var(--text-muted)' : color;
+            statusIndicator.style.backgroundColor = color;
+        }
+    </script>
+</body>
+</html>
