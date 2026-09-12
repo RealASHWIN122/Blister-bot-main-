@@ -6,8 +6,8 @@ This document details the complete hardware wiring between the Arduino Uno Q, th
 > [!WARNING]
 > Never power the stepper motors directly from the Arduino Uno Q's 5V pin! They draw too much current and will damage the board.
 
-* **External Power Supply (+):** Connect to the positive (red) rail on the breadboard. (Use the correct voltage for your motors, typically 5V or 12V).
-* **External Power Supply (- / GND):** Connect to the negative (blue/black) rail on the breadboard.
+* **External Power Supply (+):** Connect the positive wire from your isolated 6V (4x AA) battery pack to the positive (red) rail on the breadboard.
+* **External Power Supply (- / GND):** Connect the negative wire from your 6V (4x AA) battery pack to the negative (blue/black) rail on the breadboard.
 * **Arduino Uno Q GND:** Connect a wire from any `GND` pin on the Arduino Uno Q to the negative (blue/black) rail on the breadboard. **This common ground is critical.**
 
 ## 2. Stepper Motor Drivers (e.g., ULN2003)
