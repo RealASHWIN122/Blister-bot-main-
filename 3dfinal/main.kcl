@@ -1,0 +1,112 @@
+// Packet paddle wheel
+// Four axial sliding guides on a single radial rotor.
+@settings(kclVersion = 2.0, defaultLengthUnit = mm)
+
+bladeLength = 95mm
+bladeThickness = 3mm
+packetWidth = 64mm
+windowWidth = 50mm
+windowLength = 80mm
+hubRadius = 10mm
+bladeRoot = 9mm
+railWall = 2mm
+railHeight = 5mm
+lipOverhang = 2mm
+lipThickness = 1.5mm
+socketDiameter = 5mm
+socketFlatOffset = 1.5mm
+socketDepth = 12mm
+bladeWidth = packetWidth + 2 * railWall
+
+fn rectangularPrism(width, length, depth) {
+  profile = sketch(on = XY) {
+    bottom = line(start = [var 0mm, var 0mm], end = [var 68mm, var 0mm])
+    right = line(start = [var 68mm, var 0mm], end = [var 68mm, var 95mm])
+    top = line(start = [var 68mm, var 95mm], end = [var 0mm, var 95mm])
+    left = line(start = [var 0mm, var 95mm], end = [var 0mm, var 0mm])
+    coincident([bottom.start, ORIGIN])
+    coincident([bottom.end, right.start])
+    coincident([right.end, top.start])
+    coincident([top.end, left.start])
+    coincident([left.end, bottom.start])
+    horizontal(bottom)
+    horizontal(top)
+    vertical(left)
+    vertical(right)
+    distance([bottom.start, bottom.end]) == width
+    distance([right.start, right.end]) == length
+  }
+  face = region(segments = [profile.bottom, profile.right], intersectionIndex = -1, direction = CCW)
+  prism = extrude(face, length = depth)
+  hide(profile)
+  return prism
+}
+
+bladeBlank = rectangularPrism(width = bladeWidth, length = bladeLength, depth = bladeThickness + railHeight)
+slideTool = rectangularPrism(width = packetWidth, length = bladeLength - railWall + 1mm, depth = railHeight - lipThickness)
+  |> translate(
+       x = railWall,
+       y = -1mm,
+       z = bladeThickness,
+       global = true,
+     )
+openingTool = rectangularPrism(width = packetWidth - (2 * lipOverhang), length = bladeLength - railWall + 1mm, depth = railHeight + 1mm)
+  |> translate(
+       x = railWall + lipOverhang,
+       y = -1mm,
+       z = bladeThickness,
+       global = true,
+     )
+channelTool = union([slideTool, openingTool])
+bladeWithGuides = subtract(bladeBlank, tools = [channelTool])
+windowTool = rectangularPrism(width = windowWidth, length = windowLength, depth = bladeThickness + railHeight + 2mm)
+  |> translate(
+       x = (bladeWidth - windowWidth) / 2,
+       y = (bladeLength - windowLength) / 2,
+       z = -1mm,
+       global = true,
+     )
+guidedBlade = subtract(bladeWithGuides, tools = [windowTool])
+  |> translate(x = bladeRoot, global = true)
+  |> rotate(axis = X, angle = 90deg, global = true)
+radialBlades = patternCircular3d(
+  guidedBlade,
+  instances = 4,
+  axis = Z,
+  center = [0mm, 0mm, 0mm],
+  arcDegrees = 360deg,
+  rotateDuplicates = true,
+)
+
+hubProfile = sketch(on = XY) {
+  hubCircle = circle(center = [var 0mm, var 0mm], start = [var 10mm, var 0mm])
+  coincident([hubCircle.center, ORIGIN])
+  horizontal([hubCircle.center, hubCircle.start])
+  radius(hubCircle) == hubRadius
+}
+hub = extrude(region(segments = [hubProfile.hubCircle]), length = bladeLength + 2mm)
+  |> translate(z = -1mm, global = true)
+hide(hubProfile)
+rotorFirstBlade = union([hub, radialBlades[0]])
+rotorSecondBlade = union([rotorFirstBlade, radialBlades[1]])
+rotorThirdBlade = union([rotorSecondBlade, radialBlades[2]])
+rotorBlank = union([rotorThirdBlade, radialBlades[3]])
+
+socketProfile = sketch(on = XY) {
+  shaftCircle = circle(center = [var 0mm, var 0mm], start = [var 2.5mm, var 0mm])
+  coincident([shaftCircle.center, ORIGIN])
+  horizontal([shaftCircle.center, shaftCircle.start])
+  diameter(shaftCircle) == socketDiameter
+}
+socketRoundTool = extrude(region(segments = [socketProfile.shaftCircle]), length = socketDepth + 1mm)
+  |> translate(z = -2mm, global = true)
+hide(socketProfile)
+flatTrim = rectangularPrism(width = socketDiameter, length = socketDiameter + 2mm, depth = socketDepth + 4mm)
+  |> translate(
+       x = socketFlatOffset,
+       y = -socketDiameter / 2 - 1mm,
+       z = -3mm,
+       global = true,
+     )
+socketDTool = subtract(socketRoundTool, tools = [flatTrim])
+packetRotor = subtract(rotorBlank, tools = [socketDTool])

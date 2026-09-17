@@ -1,0 +1,11 @@
+title = "new3d"
+default_file = "main.kcl"
+
+[settings.app]
+[settings.meta]
+id = "48ac6bf2-3656-442b-a573-545c8953e15f"
+
+[settings.modeling]
+
+[cloud."zoo.dev"]
+project_id = "cec9161a-4684-4b11-aa58-ed5b99bf2803"
