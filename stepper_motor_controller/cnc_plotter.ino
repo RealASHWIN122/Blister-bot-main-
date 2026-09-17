@@ -1,5 +1,6 @@
 const int X_PINS[4] = {2, 3, 4, 5};
 const int Y_PINS[4] = {6, 7, 8, 9};
+const int Z_PINS[4] = {10, 11, 12, 13};
 
 const int stepMatrix[8][4] = {
   {1, 0, 0, 0},
@@ -14,11 +15,13 @@ const int stepMatrix[8][4] = {
 
 int xStep = 0;
 int yStep = 0;
+int zStep = 0;
 
 void setup() {
   for (int i = 0; i < 4; i++) {
     pinMode(X_PINS[i], OUTPUT);
     pinMode(Y_PINS[i], OUTPUT);
+    pinMode(Z_PINS[i], OUTPUT);
   }
   Serial.begin(115200);
 }
@@ -53,11 +56,14 @@ void rotateSteps(char axis, int steps) {
       stepMotor(X_PINS, xStep, dir);
     } else if (axis == 'Y') {
       stepMotor(Y_PINS, yStep, dir);
+    } else if (axis == 'Z') {
+      stepMotor(Z_PINS, zStep, dir);
     }
   }
   
   if (axis == 'X') powerDown(X_PINS);
   if (axis == 'Y') powerDown(Y_PINS);
+  if (axis == 'Z') powerDown(Z_PINS);
 }
 
 void loop() {
@@ -74,6 +80,11 @@ void loop() {
       int steps = command.substring(2).toInt();
       rotateSteps('Y', steps);
       Serial.println("ACK:Y");
+    }
+    else if (command.startsWith("Z ")) {
+      int steps = command.substring(2).toInt();
+      rotateSteps('Z', steps);
+      Serial.println("ACK:Z");
     }
   }
 }

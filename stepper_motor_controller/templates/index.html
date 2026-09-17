@@ -75,7 +75,7 @@
         /* D-Pad Layout */
         .d-pad {
             display: grid;
-            grid-template-columns: repeat(3, 85px);
+            grid-template-columns: repeat(4, 85px);
             grid-template-rows: repeat(3, 85px);
             gap: 15px;
             justify-content: center;
@@ -110,11 +110,18 @@
         .btn.left { grid-column: 1; grid-row: 2; }
         .btn.right { grid-column: 3; grid-row: 2; }
         .btn.down { grid-column: 2; grid-row: 3; }
+        .btn.z-up { grid-column: 4; grid-row: 1; }
+        .btn.z-down { grid-column: 4; grid-row: 3; }
 
         /* Y Axis Interactions (Primary Color) */
         .btn.up:active, .btn.down:active { background-color: var(--primary); border-color: var(--primary); }
         .btn.up:hover { border-color: var(--primary); color: var(--primary); }
         .btn.down:hover { border-color: var(--primary); color: var(--primary); }
+
+        /* Z Axis Interactions (Success Color) */
+        .btn.z-up:active, .btn.z-down:active { background-color: var(--success); border-color: var(--success); }
+        .btn.z-up:hover { border-color: var(--success); color: var(--success); }
+        .btn.z-down:hover { border-color: var(--success); color: var(--success); }
 
         /* X Axis Interactions (Accent Color) */
         .btn.left:active, .btn.right:active { background-color: var(--accent); border-color: var(--accent); }
@@ -202,9 +209,9 @@
         /* Mobile Adjustments */
         @media (max-width: 480px) {
             .d-pad {
-                grid-template-columns: repeat(3, 75px);
+                grid-template-columns: repeat(4, 75px);
                 grid-template-rows: repeat(3, 75px);
-                gap: 12px;
+                gap: 10px;
             }
             .container {
                 padding: 25px 20px;
@@ -224,6 +231,8 @@
             <div class="center-dot"></div>
             <button class="btn right" onclick="triggerMove('X', 1)">X+</button>
             <button class="btn down" onclick="triggerMove('Y', -1)">Y-</button>
+            <button class="btn z-up" onclick="triggerMove('Z', 1)">Z+</button>
+            <button class="btn z-down" onclick="triggerMove('Z', -1)">Z-</button>
         </div>
 
         <div class="controls">

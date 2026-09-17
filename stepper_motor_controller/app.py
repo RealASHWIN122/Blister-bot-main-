@@ -70,7 +70,7 @@ def move():
     # Calculate signed steps for the Arduino sketch
     signed_steps = steps * direction
     
-    if axis in ['X', 'Y']:
+    if axis in ['X', 'Y', 'Z']:
         success = rotate_steps(axis, signed_steps)
         if success:
             return jsonify({"status": "success", "message": f"Moved {axis} {signed_steps} steps"})
