@@ -1,0 +1,16 @@
+[Unit]
+Description=Blister Bot Master Controller
+After=network.target bluetooth.target sound.target
+
+[Service]
+Type=simple
+User=arduino
+WorkingDirectory=/home/arduino/Blister-bot-main-
+ExecStart=/usr/bin/python3 /home/arduino/Blister-bot-main-/master_controller.py
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

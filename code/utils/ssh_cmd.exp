@@ -1,0 +1,6 @@
+#!/usr/bin/expect -f
+set timeout 10
+spawn ssh -o StrictHostKeyChecking=no arduino@192.168.10.43 "echo 'ardunoq4' | sudo -S bash -c \"cat > /etc/systemd/system/cnc_web.service << 'EOF'\n\[Unit\]\nDescription=CNC Web Controller\nAfter=network.target\n\n\[Service\]\nType=simple\nUser=arduino\nWorkingDirectory=/home/arduino/Blister-bot-main-/stepper_motor_controller\nExecStart=/usr/bin/python3 app.py\nRestart=always\n\n\[Install\]\nWantedBy=multi-user.target\nEOF\nsystemctl daemon-reload\nsystemctl enable --now cnc_web.service\""
+expect "password:"
+send "ardunoq4\r"
+expect eof

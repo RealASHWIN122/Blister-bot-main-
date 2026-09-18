@@ -1,0 +1,37 @@
+[
+  {
+    "name": "Paracetamol",
+    "common_names": ["Acetaminophen", "Tylenol", "Panadol"],
+    "type": "Pain Reliever / Fever Reducer",
+    "standard_dosages": ["325mg", "500mg", "650mg"],
+    "requires_food": false
+  },
+  {
+    "name": "Ibuprofen",
+    "common_names": ["Advil", "Motrin", "Nurofen"],
+    "type": "NSAID / Anti-inflammatory",
+    "standard_dosages": ["200mg", "400mg", "600mg"],
+    "requires_food": true
+  },
+  {
+    "name": "Cetirizine",
+    "common_names": ["Zyrtec", "Reactine"],
+    "type": "Antihistamine / Allergy",
+    "standard_dosages": ["5mg", "10mg"],
+    "requires_food": false
+  },
+  {
+    "name": "Dextromethorphan",
+    "common_names": ["Robitussin", "Delsym"],
+    "type": "Cough Suppressant",
+    "standard_dosages": ["15mg", "30mg"],
+    "requires_food": false
+  },
+  {
+    "name": "Calcium Carbonate",
+    "common_names": ["Tums", "Rolaids"],
+    "type": "Antacid",
+    "standard_dosages": ["500mg", "750mg", "1000mg"],
+    "requires_food": false
+  }
+]
