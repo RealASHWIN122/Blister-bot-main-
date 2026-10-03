@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STT Dataset Collector & Tester</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            margin: 0;
+        }
+        .container {
+            background-color: #1e1e1e;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+        }
+        h1 { margin-top: 0; color: #4caf50; }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #333;
+        }
+        .tab {
+            flex: 1;
+            padding: 1rem;
+            cursor: pointer;
+            font-weight: bold;
+            color: #888;
+            transition: all 0.2s;
+        }
+        .tab:hover { color: #fff; background-color: #2a2a2a; }
+        .tab.active {
+            color: #4caf50;
+            border-bottom: 3px solid #4caf50;
+        }
+
+        .input-group { margin-bottom: 1.5rem; text-align: left; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: bold; color: #aaa; }
+        input[type="text"] {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #333;
+            border-radius: 6px;
+            background-color: #2a2a2a;
+            color: white;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+        .target-phrase-box {
+            background-color: #2a2a2a;
+            border: 2px dashed #4caf50;
+            padding: 2rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+        }
+        .target-phrase { font-size: 1.5rem; font-weight: bold; color: #fff; }
+        .record-btn {
+            background-color: #e53935; color: white; border: none; border-radius: 50px;
+            padding: 1rem 2rem; font-size: 1.2rem; font-weight: bold; cursor: pointer;
+            transition: all 0.2s; width: 100%; box-shadow: 0 4px 6px rgba(229, 57, 53, 0.3);
+        }
+        .record-btn:hover { background-color: #f44336; }
+        .record-btn.recording { background-color: #b71c1c; animation: pulse 1.5s infinite; }
+        .record-btn:disabled { background-color: #555; cursor: not-allowed; box-shadow: none; animation: none; }
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(229, 57, 53, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(229, 57, 53, 0); }
+        }
+        .results {
+            margin-top: 2rem; text-align: left; background-color: #2a2a2a;
+            padding: 1rem; border-radius: 8px; display: none;
+        }
+        .metrics {
+            display: flex; gap: 1rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #444;
+        }
+        .metric-card {
+            flex: 1; background-color: #333; padding: 0.5rem; border-radius: 4px; text-align: center;
+        }
+        .metric-value { font-size: 1.2rem; font-weight: bold; color: #4caf50; }
+        .status { margin-top: 1rem; color: #aaa; font-size: 0.9rem; }
+        .nav-buttons { display: flex; justify-content: space-between; margin-top: 1rem; }
+        .nav-btn { background-color: #333; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+        .nav-btn:hover { background-color: #444; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>STT Model Fine-Tuning</h1>
+        
+        <div class="input-group" style="text-align: center; margin-bottom: 2rem;">
+            <label for="modelSelect" style="display: inline-block; margin-right: 1rem;">Active Model:</label>
+            <select id="modelSelect" style="padding: 0.5rem; border-radius: 6px; background-color: #2a2a2a; color: white; border: 1px solid #333;">
+                <option value="old">Original Model (Streaming)</option>
+                <option value="new">Fine-Tuned Model (Offline)</option>
+            </select>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('data-collection')">Data Collection</button>
+            <button class="tab-btn" onclick="switchTab('testing-mode')">Testing Mode</button>
+            <button class="tab-btn" onclick="switchTab('finetune-mode')">Fine-Tuning</button>
+        </div>
+        
+        <div id="data-collection" class="tab-content">
+            <div class="input-group">
+                <label for="speakerName">Speaker Name:</label>
+                <input type="text" id="speakerName" placeholder="e.g. John" required>
+            </div>
+
+            <div class="target-phrase-box">
+                <div style="color: #aaa; margin-bottom: 0.5rem; font-size: 0.9rem;">Please say:</div>
+                <div class="target-phrase" id="targetPhrase">Loading...</div>
+            </div>
+
+            <button id="recordBtn" class="record-btn">Hold to Record</button>
+            
+            <div class="nav-buttons">
+                <button class="nav-btn" onclick="nextPhrase()">Skip Phrase</button>
+            </div>
+
+            <div class="status" id="statusText">Ready</div>
+
+            <div class="results" id="resultsBox">
+                <div style="color: #aaa; margin-bottom: 0.25rem;">Edge Model Recognized:</div>
+                <div id="predictedText" style="color: #ff9800; font-weight: bold; font-size: 1.1rem;"></div>
+                <div style="color: #aaa; margin-top: 0.5rem; font-size: 0.8rem;" id="savedAsText"></div>
+                
+                <div class="metrics" id="metricsBox" style="display: none;">
+                    <div class="metric-card">
+                        <div style="font-size: 0.8rem; color: #aaa;">Word Error Rate (WER)</div>
+                        <div class="metric-value" id="werValue">0%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div style="font-size: 0.8rem; color: #aaa;">Char Error Rate (CER)</div>
+                        <div class="metric-value" id="cerValue">0%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="testing-mode" class="tab-content" style="display: none;">
+            <p>Test the fine-tuned model's performance on a fresh set of voice commands.</p>
+            <button id="test-record-btn" class="record-btn">
+                <span class="icon">🎤</span>
+                Hold to Test Voice
+            </button>
+            
+            <div id="test-metrics" class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value" id="wer-val">-</div>
+                    <div class="metric-label">Word Error Rate (WER)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="cer-val">-</div>
+                    <div class="metric-label">Char Error Rate (CER)</div>
+                </div>
+            </div>
+
+            <div class="test-results" id="test-results-log">
+                <!-- Test results will appear here -->
+            </div>
+        </div>
+
+        <div id="finetune-mode" class="tab-content" style="display: none;">
+            <p>Automate the PyTorch ML training pipeline to fine-tune the Zipformer model on your collected dataset.</p>
+            <button id="start-finetune-btn" onclick="startFinetuning()" style="padding: 15px 30px; font-size: 18px; border-radius: 8px; background: #6200ee; color: white; border: none; cursor: pointer; margin-bottom: 20px;">
+                🚀 Start Fine-Tuning Pipeline
+            </button>
+            
+            <div style="background: #1e1e1e; padding: 15px; border-radius: 8px; font-family: monospace; color: #00ff00; height: 300px; overflow-y: auto; text-align: left;">
+                <pre id="finetune-log" style="margin: 0; white-space: pre-wrap; word-wrap: break-word;">Ready to start training. Click the button above.</pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const phrases = {{ phrases | safe }};
+        let currentPhrase = "";
+        let currentMode = "train";
+        
+        let mediaRecorder;
+        let audioChunks = [];
+
+        const targetPhraseEl = document.getElementById("targetPhrase");
+        const recordBtn = document.getElementById("recordBtn");
+        const statusText = document.getElementById("statusText");
+        const speakerName = document.getElementById("speakerName");
+        const resultsBox = document.getElementById("resultsBox");
+        const metricsBox = document.getElementById("metricsBox");
+        const predictedText = document.getElementById("predictedText");
+        const savedAsText = document.getElementById("savedAsText");
+        const werValue = document.getElementById("werValue");
+        const cerValue = document.getElementById("cerValue");
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(tabId).style.display = 'block';
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
+            if (tabId === 'data-collection') {
+                currentMode = 'train';
+            } else if (tabId === 'testing-mode') {
+                currentMode = 'test';
+            }
+            resultsBox.style.display = 'none';
+        }
+
+        function nextPhrase() {
+            currentPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+            targetPhraseEl.textContent = `"${currentPhrase}"`;
+            resultsBox.style.display = 'none';
+        }
+
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    audioChunks = [];
+                    uploadAudio(audioBlob);
+                };
+            })
+            .catch(err => {
+                statusText.textContent = "Microphone access denied.";
+                recordBtn.disabled = true;
+            });
+
+        const testRecordBtn = document.getElementById("test-record-btn");
+        const werVal = document.getElementById("wer-val");
+        const cerVal = document.getElementById("cer-val");
+        const testResultsLog = document.getElementById("test-results-log");
+
+        function getActiveBtn() {
+            return currentMode === 'test' ? testRecordBtn : recordBtn;
+        }
+
+        function startRecording() {
+            if (currentMode === 'train' && !speakerName.value.trim()) { alert("Please enter your name first!"); return; }
+            if (mediaRecorder && mediaRecorder.state === "inactive") {
+                audioChunks = [];
+                mediaRecorder.start();
+                let btn = getActiveBtn();
+                btn.classList.add("recording");
+                btn.textContent = "Release to Stop";
+                statusText.textContent = "Recording...";
+                resultsBox.style.display = 'none';
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                let btn = getActiveBtn();
+                btn.classList.remove("recording");
+                btn.textContent = currentMode === 'test' ? "Hold to Test Voice" : "Hold to Record";
+                btn.disabled = true;
+                statusText.textContent = "Processing and translating...";
+            }
+        }
+
+        recordBtn.addEventListener("mousedown", startRecording);
+        testRecordBtn.addEventListener("mousedown", startRecording);
+        
+        window.addEventListener("mouseup", stopRecording);
+        
+        recordBtn.addEventListener("touchstart", (e) => { e.preventDefault(); startRecording(); });
+        testRecordBtn.addEventListener("touchstart", (e) => { e.preventDefault(); startRecording(); });
+        
+        window.addEventListener("touchend", stopRecording);
+
+        function uploadAudio(blob) {
+            const formData = new FormData();
+            formData.append("audio", blob);
+            formData.append("name", speakerName.value.trim() || "test_user");
+            formData.append("text", currentPhrase);
+            formData.append("mode", currentMode);
+            formData.append("model", document.getElementById("modelSelect").value);
+
+            fetch("/upload", { method: "POST", body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    statusText.textContent = "Error: " + data.error;
+                } else {
+                    statusText.textContent = "Processed successfully!";
+                    
+                    if (currentMode === "test") {
+                        if (data.wer !== undefined) {
+                            werVal.textContent = (data.wer * 100).toFixed(1) + "%";
+                            cerVal.textContent = (data.cer * 100).toFixed(1) + "%";
+                            werVal.style.color = data.wer > 0.2 ? '#e53935' : (data.wer > 0 ? '#ffb300' : '#4caf50');
+                            cerVal.style.color = data.cer > 0.1 ? '#e53935' : (data.cer > 0 ? '#ffb300' : '#4caf50');
+                        }
+                        
+                        let logEntry = document.createElement("div");
+                        logEntry.style.marginBottom = "1rem";
+                        logEntry.style.padding = "1rem";
+                        logEntry.style.backgroundColor = "#333";
+                        logEntry.style.borderRadius = "4px";
+                        logEntry.innerHTML = `
+                            <div style="color: #aaa; font-size: 0.9rem;">Target: ${currentPhrase}</div>
+                            <div style="color: #ff9800; font-weight: bold;">Recognized: ${data.predicted_text || "[Silence]"}</div>
+                            <div style="color: #aaa; font-size: 0.8rem; margin-top: 0.5rem;">WER: ${(data.wer * 100).toFixed(1)}% | CER: ${(data.cer * 100).toFixed(1)}%</div>
+                        `;
+                        testResultsLog.prepend(logEntry);
+                        nextPhrase();
+                    } else {
+                        predictedText.textContent = data.predicted_text || "[Silence/No text recognized]";
+                        savedAsText.textContent = "Saved as: " + data.saved_as;
+                        metricsBox.style.display = 'none';
+                        resultsBox.style.display = 'block';
+                        setTimeout(nextPhrase, 2000);
+                    }
+                }
+            })
+            .catch(err => { statusText.textContent = "Upload failed."; console.error(err); })
+            .finally(() => { 
+                recordBtn.disabled = false; 
+                testRecordBtn.disabled = false;
+            });
+        }
+
+        // Fine-tuning logic
+        let finetuneInterval;
+
+        async function startFinetuning() {
+            document.getElementById('start-finetune-btn').disabled = true;
+            document.getElementById('start-finetune-btn').innerText = '⏳ Pipeline Running...';
+            
+            try {
+                await fetch('/finetune', { method: 'POST' });
+                pollFinetuneStatus();
+            } catch (err) {
+                console.error(err);
+                document.getElementById('finetune-log').innerText = 'Error starting pipeline: ' + err;
+            }
+        }
+
+        async function pollFinetuneStatus() {
+            if (finetuneInterval) clearInterval(finetuneInterval);
+            
+            finetuneInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/finetune_status');
+                    const data = await response.json();
+                    
+                    const logEl = document.getElementById('finetune-log');
+                    logEl.innerText = data.log;
+                    logEl.parentElement.scrollTop = logEl.parentElement.scrollHeight; // Auto-scroll
+                    
+                    if (data.status === 'completed') {
+                        clearInterval(finetuneInterval);
+                        document.getElementById('start-finetune-btn').innerText = '✅ Training Complete!';
+                    } else if (data.status === 'failed') {
+                        clearInterval(finetuneInterval);
+                        document.getElementById('start-finetune-btn').innerText = '❌ Training Failed';
+                        document.getElementById('start-finetune-btn').disabled = false;
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
+            }, 2000);
+        }
+
+        nextPhrase();
+    </script>
+</body>
+</html>

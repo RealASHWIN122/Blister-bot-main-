@@ -1,6 +1,24 @@
 # Blister Bot 💊🤖
+# Motivation
+What if you didnt have to manually strip pils from medicine packets everytime you  had a cold?What if eldery people in nursing homes and living alone at home could be safely monitored and assisted even when there is no one around? And what if all of this was hands free and handled by speaking as if you were talking to a regular person,and to top it off, all offline,so your private talks remain within your circle?
 
-Blister Bot is a fully automated, voice-controlled medical assistant and CNC drilling machine designed to help users interact with a medication inventory, add patients using facial recognition, and extract pills from blister packs automatically.
+
+
+
+Thats what blister bot was all about.Not only has AI become more capable,it has also become more efficient,and now even small models that can run on your old laptop with no dedicated gpu can run some great models for a variety of tasks including conversational chatbots,coding work,character recognition,speech to text and vice versa and facial recognition.All of this opens up the possibilites of creating useful things with intelligence without having an internet connection.
+
+
+The only limitation was that we lacked  lightweight but powerful and cheap hardware that could help build these intelligence projects,and we were stuck to using tinyml on classic boards like esp32 and the arduino uno r4 boards which at the end of the day are just microcontrollers and lack the raw memory to hold complex workflows.Luckily,with the creation of the arduino uno q and other boards we finally have the hardware to pull off these ai hardware projects without having to compromise .
+
+
+
+# So what is Blister Bot,really?
+
+
+
+
+
+
 
 ## Core Features
 1. **Conversational LLM Interface**: Talk to Blister Bot naturally. It uses a local Qwen LLM for intelligence, Sherpa-ONNX for fast offline speech-to-text, and Piper for text-to-speech.

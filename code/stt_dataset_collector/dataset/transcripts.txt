@@ -1,0 +1,98 @@
+aswin_1 add a new patient
+aswin_2 did I take my medicine today
+aswin_3 extract paracetamol
+aswin_4 bot, dispense one tablet
+aswin_5 how many pills are left
+aswin_6 change patient info
+aswin_7 I need some ibuprofen
+aswin_8 can I have some paracetamol
+aswin_9 bot, wake up
+aswin_10 I need some ibuprofen
+aswin_11 how many pills are left
+aswin_12 what medicines do we have
+aswin_13 I have a headache
+aswin_14 I have a headache
+aswin_15 bot, I need advil
+aswin_16 patient info
+aswin_17 please give me medicine
+aswin_18 I have a headache
+aswin_19 bot, I need a pill
+aswin_20 bot, I need some tylenol
+aswin_21 bot, paracetamol please
+aswin_22 bot, check inventory
+aswin_23 bot, update john's details
+aswin_24 bot, patient info
+aswin_25 bot, I need pain relief
+aswin_26 bot, I feel pain right now
+aswin_27 bot, did I take my medicine today
+aswin_28 bot, I need pain relief
+aswin_29 bot, what time is my next dose
+aswin_30 bot, I need some tylenol
+aswin_31 bot, dispense aspirin
+aswin_32 bot, what medicines do we have
+aswin_33 bot, patient details for john
+aswin_34 bot, did I take my medicine today
+aswin_35 bot, dispense medicine
+aswin_36 bot, I need pain relief
+aswin_37 bot, extract a pill
+aswin_38 bot, I feel pain right now
+aswin_39 bot, I need paracetamol
+aswin_40 bot, I need pain relief
+aswin_41 bot, patient details for john
+aswin_42 bot, wake up
+aswin_43 bot, what time is my next dose
+aswin_44 bot, dispense one tablet
+aswin_45 bot, I need some ibuprofen
+aswin_46 bot, did I take my medicine today
+aswin_47 bot, wake up
+aswin_48 bot, did I take my medicine today
+aswin_49 bot, wake up
+aswin_50 bot, I have a headache
+aswin_51 bot, extract paracetamol
+aswin_52 bot, patient info
+aswin_53 bot, did I take my medicine today
+aswin_54 bot, listen to me
+aswin_55 bot, I need pain relief
+aswin_56 bot, I need some ibuprofen
+aswin_57 bot, update patient data
+aswin_58 bot, extract paracetamol
+aswin_59 bot, listen to me
+aswin_60 bot, I need a pill
+aswin_61 bot, patient details for john
+aswin_62 bot, wake up
+aswin_63 bot, extract paracetamol
+aswin_64 bot, wake up
+aswin_65 bot, dispense one tablet
+aswin_66 bot, I need some ibuprofen
+aswin_67 bot, dispense one tablet
+aswin_68 bot, new patient
+aswin_69 bot, what medicines do we have
+aswin_70 bot, what time is my next dose
+aswin_71 bot, I need some tylenol
+aswin_72 bot, update patient data
+aswin_73 bot, new patient
+aswin_74 bot, check inventory
+aswin_75 bot, I need some ibuprofen
+aswin_76 bot, ad patient
+aswin_77 bot, I am feeling sick
+aswin_78 bot, ad patient
+aswin_79 bot, update john's details
+aswin_80 bot, did I take my medicine today
+aswin_81 bot, do we have paracetamol in stock
+aswin_82 bot, dispense one paracetamol
+aswin_83 bot, update patient data
+aswin_84 bot, add patient
+aswin_85 bot, patient info
+aswin_86 bot, can I have some paracetamol
+aswin_87 bot, I need some tylenol
+aswin_88 bot, I need some ibuprofen
+aswin_89 bot, I need a pill
+aswin_90 bot, did I take my medicine today
+aswin_91 bot, I have a headache
+check_1 bot, check inventory
+check_2 bot, dispense one paracetamol
+check_3 bot, I feel pain right now
+jj_1 bot, give me my medicine
+jj_2 bot, how many pills are left
+jj_3 bot, I need some ibuprofen
+jj_4 bot, did I take my medicine today

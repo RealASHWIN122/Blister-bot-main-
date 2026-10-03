@@ -1,32 +1,26 @@
 #!/bin/bash
+echo "Cleaning remote structure..."
+./code/utils/ssh_cmd.exp "rm -rf /home/arduino/Blister-bot-main-/code /home/arduino/Blister-bot-main-/week2 /home/arduino/Blister-bot-main-/master_controller.py /home/arduino/Blister-bot-main-/stepper_motor_controller"
 
-echo "================================================="
-echo "   Pushing Offline Master Controller to Board    "
-echo "================================================="
+echo "Creating rsync expect script..."
+cat << 'EXPECT_EOF' > rsync.exp
+#!/usr/bin/expect -f
+set timeout -1
+set password "ardunoq4"
+set cmd [lindex $argv 0]
 
-echo "[1/4] Creating target directories on board..."
-adb shell "mkdir -p /home/arduino/Blister-bot-main-/week2/UNO"
-adb shell "mkdir -p /home/arduino/Blister-bot-main-/week2/facerecog-unoq"
-adb shell "mkdir -p /home/arduino/Blister-bot-main-/week2/blister_detector"
-adb shell "mkdir -p /home/arduino/Blister-bot-main-/stepper_motor_controller"
-adb shell "mkdir -p /home/arduino/Blister-bot-main-/appliance_terminal"
+spawn sh -c "$cmd"
+expect {
+    "*assword:*" {
+        send "$password\r"
+        exp_continue
+    }
+    eof
+}
+EXPECT_EOF
+chmod +x rsync.exp
 
-echo "[2/4] Pushing Master Controller and Medical DB..."
-adb push master_controller.py /home/arduino/Blister-bot-main-/
-adb push medical_database.json /home/arduino/Blister-bot-main-/
+echo "Syncing code/ directory..."
+./rsync.exp "rsync -avz --exclude 'STT-streaming-zipformer-indian-en' --exclude 'qwen2.5-0.5b-instruct-q4_k_m.gguf' --exclude 'en_US-lessac-low.onnx' code/ arduino@192.168.10.43:~/Blister-bot-main-/code/"
 
-echo "[3/4] Pushing Offline AI Models (This will take a few minutes)..."
-adb push week2/UNO/* /home/arduino/Blister-bot-main-/week2/UNO/
-
-echo "[4/4] Pushing Modules..."
-adb push week2/facerecog-unoq/* /home/arduino/Blister-bot-main-/week2/facerecog-unoq/
-adb push week2/blister_detector/* /home/arduino/Blister-bot-main-/week2/blister_detector/
-
-echo "================================================="
-echo "   Transfer Complete!                            "
-echo "================================================="
-echo "To run the controller on the board, use:"
-echo "adb shell"
-echo "cd /home/arduino/Blister-bot-main-"
-echo "python3 master_controller.py"
-echo "================================================="
+echo "Done!"

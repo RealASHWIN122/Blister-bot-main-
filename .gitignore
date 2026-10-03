@@ -6,3 +6,10 @@
 .venv/
 *.eim
 *.mp4
+
+# Model downloads & huge frameworks
+code/stt_dataset_collector/icefall/
+code/stt_dataset_collector/UNO/
+code/stt_dataset_collector/pretrained.pt
+code/UNO/STT-offline-zipformer-en-baseline/
+code/UNO/sherpa-onnx-whisper-tiny.en/

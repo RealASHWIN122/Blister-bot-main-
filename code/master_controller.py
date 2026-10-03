@@ -44,6 +44,7 @@ class BlisterBotMaster:
         self.stt = None
         self.tts = None
         self.medical_db = []
+        self.current_patient = "Unknown"
         
         # LBPH Face Recognizer
         self.face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
@@ -355,6 +356,25 @@ class BlisterBotMaster:
         time.sleep(0.5)
         self.move_to_pixel(cx, cy, cx, cy)
         speak_text(self.tts, f"{medicine_name} has been extracted.")
+        self.log_medication_event(getattr(self, 'current_patient', 'Unknown'), medicine_name, "TAKEN")
+
+    def log_pain_report(self, patient_name, text, patient_info):
+        import datetime
+        dt_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        filename = os.path.join(os.path.dirname(__file__), "painrec", f"{patient_name}.md")
+        with open(filename, "a") as f:
+            f.write(f"## Pain Report: {dt_str}\n")
+            f.write(f"- **Patient Details**: {patient_info}\n")
+            f.write(f"- **Report**: {text}\n\n")
+
+    def log_medication_event(self, patient_name, med_name, status):
+        import datetime
+        dt_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        filename = os.path.join(os.path.dirname(__file__), "painrec", f"{patient_name}.md")
+        with open(filename, "a") as f:
+            f.write(f"## Medication Event: {dt_str}\n")
+            f.write(f"- **Medicine**: {med_name}\n")
+            f.write(f"- **Status**: {status}\n\n")
 
     def normal_operating_mode(self):
         print("[STATE 3] Normal Operating Mode")
@@ -376,11 +396,16 @@ class BlisterBotMaster:
                 
                 # Use LLM to classify the intent to handle all mispronunciations and phrasings!
                 intent_prompt = f"""Classify the user's command into one of these exact categories:
-1. ADD_PATIENT (e.g. "add patient", "new patient", "ad patient")
-2. DRILL_MEDICINE (e.g. "I need paracetamol", "get me advil", "give me medicine")
-3. PATIENT_DETAILS (e.g. "details for john", "patient info")
-4. UPDATE_PATIENT (e.g. "update john's details", "change patient info")
-5. Q_AND_A (any general question)
+1. ADD_PATIENT
+2. DRILL_MEDICINE
+3. PATIENT_DETAILS
+4. UPDATE_PATIENT
+5. DOSAGE_QUERY (e.g. "dose for panadol")
+6. SCHEDULE_QUERY (e.g. "when should I take")
+7. MEDICINE_QUERY (e.g. "what is ibuprofen for")
+8. PAIN_REPORT (e.g. "I have a headache", "I feel sick")
+9. CONVERSATION (e.g. "hello", "how are you")
+10. Q_AND_A (fallback)
 
 Command: '{cmd_text}'
 Output ONLY the category name."""
@@ -433,6 +458,24 @@ Output ONLY the category name."""
                                 speak_text(self.tts, "Sorry, I couldn't understand.")
                     else:
                         speak_text(self.tts, f"Sorry, I could not find {name}.")
+                elif any(q in intent for q in ["DOSAGE", "SCHEDULE", "MEDICINE_QUERY"]):
+                    patient_name = getattr(self, 'current_patient', 'Unknown')
+                    patient_info = get_patient_by_name(patient_name)
+                    inv = get_inventory()
+                    prompt = f"Answer this concisely. Question: '{cmd_text}'. Context: Current patient info: {patient_info}. Inventory/Dosages: {inv}"
+                    answer = generate_response(self.llm, prompt)
+                    speak_text(self.tts, answer)
+                elif "PAIN_REPORT" in intent:
+                    patient_name = getattr(self, 'current_patient', 'Unknown')
+                    patient_info = get_patient_by_name(patient_name)
+                    prompt = f"The user is reporting pain or discomfort: '{cmd_text}'. As a medical assistant, give a short, friendly, and encouraging response."
+                    answer = generate_response(self.llm, prompt)
+                    speak_text(self.tts, answer)
+                    self.log_pain_report(patient_name, cmd_text, patient_info)
+                elif "CONVERSATION" in intent:
+                    prompt = f"Answer this conversational input in a friendly and encouraging way: '{cmd_text}'."
+                    answer = generate_response(self.llm, prompt)
+                    speak_text(self.tts, answer)
                 else:
                     # General Q&A Fallback
                     inv = get_inventory()
