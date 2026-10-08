@@ -31,6 +31,7 @@ Furthermore, the Blister Bot acts as an intelligent medical assistant. It featur
 * **100% Offline AI:** Uses miniaturized, local AI models (like Qwen 0.5B, Sherpa-ONNX, and Piper) to ensure medical data privacy and zero latency. Absolutely no internet connection is required.
 * **Conversational Interface:** Talk to it naturally instead of navigating a complex touchscreen, app, or confusing buttons.
 * **Biometric Security:** Prevents accidental or unauthorized overdoses by physically verifying the patient's face before cutting the foil.
+* **Dual Monitoring Interfaces:** Both a physical Edge LCD terminal and an Appliance Flask Web UI for caregivers.
 
 ---
 
@@ -88,39 +89,79 @@ To prevent inductive voltage spikes from the stepper motors from browning out or
 ## 📐 3D Printing & Mechanical Design
 
 The mechanical chassis is built around a Cartesian CNC coordinate system paired with a rotary axis.
-* **The Rotary Wheel (`medicinewheelstand.stl`):** Holds the foil blister packs. It indexes rotationally to bring the correct medicine pack to the cutting area.
-* **The CNC Gantry:** Actuates on the back of the packet to trace, plunge, and drill the pill out of the foil using a specialized punch tool.
+* **The Rotary Wheel (`medicinewheelstand.stl`):** Holds the foil blister packs. It indexes rotationally to bring the correct medicine pack to the cutting area. The 28BYJ-48 stepper motor is geared to provide high torque for rotating the heavy loaded wheel.
+* **The CNC Gantry:** Actuates on the back of the packet to trace, plunge, and drill the pill out of the foil using a specialized punch tool. The gantry relies on dual X/Y rails.
 * **The Frame (`blissupport.stl`):** Houses the cameras at fixed focal lengths to ensure OpenCV contour mathematics are consistently accurate.
 
 ---
 
-## 💻 Core Capabilities & Software Modules
+## 💻 Deep Dive: Core AI Capabilities & Software Modules
 
 Because the machine runs offline, memory management on the Uno Q is critical. The state machine (`master_controller.py`) orchestrates loading and unloading AI models dynamically so we don't run out of RAM.
 
-### Dual Interface System
-The bot provides two main ways to interact:
-1. **Appliance Terminal:** A Flask web UI running on port 5000 that allows caregivers to view the live MJPEG camera feed, monitor logs, and trigger voice commands.
-2. **Edge Terminal:** A lightweight serial-based interface (`main_edge_terminal.py`) that uses `faster-whisper` for ultra-low latency STT and outputs the AI's responses to a physical LCD screen via a serial bridge.
+### 1. Dual Interface System
+The bot provides two main ways to interact, designed for both patients and caregivers:
+* **Appliance Terminal:** A Flask web UI running on port 5000 that allows caregivers to view the live MJPEG camera feed, monitor system logs, and manually trigger HTTP voice commands.
+* **Edge Terminal:** A lightweight serial-based interface (`main_edge_terminal.py`) that uses `faster-whisper` for ultra-low latency STT and outputs the AI's responses to a physical LCD screen via a serial bridge connected to the microcontroller's UART port (`/dev/ttyGS0`).
 
-### Intelligent Medicine Scanner & RAG
+### 2. Fast Audio Processing (STT/TTS)
+The voice pipeline is heavily optimized for the embedded CPU of the Arduino Uno Q:
+* **Faster-Whisper:** We use the `tiny.en` model with `INT8` quantization via CTranslate2. This allows for 1:1 real-time transcription (a 5-second voice clip transcribes in ~5 seconds).
+* **Hardware Resampling:** To prevent "hallucination" bugs common in Whisper when fed distorted audio, we strictly use ALSA hardware resampling (`plughw:0,0`) to convert the USB microphone's native sample rate perfectly to 16000Hz.
+* **Edge-TTS & Piper:** For speech synthesis, we rely on low-latency TTS engines that generate human-like voices and play them back instantly via `ffplay`.
+
+### 3. Intelligent Medicine Scanner & RAG
 * **Medicine Scanner (OCR):** The appliance terminal uses `rapidocr-onnxruntime` to continuously monitor the camera feed, extract text from medicine packets, and announce the names aloud.
-* **Retrieval-Augmented Generation (RAG):** When you ask for medication, the Qwen LLM queries an internal `medical_database.json` to verify schedules, dosages, and interactions before dispensing.
+* **Retrieval-Augmented Generation (RAG):** When you ask for medication, the Qwen LLM queries an internal `medical_database.json` to verify schedules, dosages, and interactions before dispensing. This prevents patients from asking for restricted medications at the wrong time.
 
-### Mirror Math Kinematics & SAM 2 Vision
-By looking at the clear plastic bubbles on the front of the packet, Camera 2 takes a snapshot. We use **Meta's Segment Anything Model 2 (SAM 2)** combined with OpenCV to accurately detect the boundaries of the blister. The Python script applies a scaling factor to convert pixels to millimeters, and then applies a **Mirror Math** formula to tell the rear-mounted CNC plunger exactly where to strike:
+### 4. Facial Recognition & Security
+To ensure medication is dispensed exclusively to the prescribed patient:
+* We utilize the **LBPH (Local Binary Pattern Histogram)** recognizer from `opencv-contrib-python-headless`.
+* During inference, it cross-references the detected face against a trained dataset of known faces.
+* Every dispense event and interaction is strictly logged to an encrypted local SQLite database (`attendance.db`).
+
+### 5. Mirror Math Kinematics & SAM 2 Vision
+Locating the pill is a complex physical-to-digital translation problem. 
+By looking at the clear plastic bubbles on the front of the packet, Camera 2 takes a snapshot. We use **Meta's Segment Anything Model 2 (SAM 2)** combined with OpenCV to accurately detect the boundaries of the blister. 
+
+The Python script applies a scaling factor to convert pixels to millimeters, and then applies a **Mirror Math** formula to tell the rear-mounted CNC plunger exactly where to strike on the back of the packet:
 ```python
+# The camera looks at the front, but the CNC punch attacks from the rear.
+# The X-axis must be inverted for perfect alignment.
 X_plunger = X_cam * -1
 ```
 
-### AI Pipeline
-1. **Audio Trigger:** Captured via USB mic (filtered by VAD).
-2. **STT (Faster-Whisper / Sherpa-ONNX):** Transcribes audio to text offline.
-3. **LLM & RAG (Qwen 2.5):** Processes intent (e.g. "I need paracetamol") against the medical database.
-4. **Face ID (LBPH):** Verifies the user against `attendance.db` via OpenCV.
-5. **Vision (OpenCV/SAM 2):** Targets the pill boundaries.
-6. **CNC Drive (`cnc_driver.py`):** Pulses the stepper motors to punch the pill.
-7. **TTS (Piper / Edge-TTS):** Announces "Your medication is dispensed."
+### The Full AI Pipeline
+1. **Audio Trigger:** Captured via USB mic (filtered by Voice Activity Detection).
+2. **STT:** Transcribes audio to text offline.
+3. **LLM & RAG:** Processes intent (e.g. "I need paracetamol") against the medical database.
+4. **Face ID:** Verifies the user against `attendance.db` via OpenCV.
+5. **Vision:** Targets the pill boundaries using SAM 2.
+6. **CNC Drive:** Pulses the stepper motors to mechanically punch the pill.
+7. **TTS:** Announces "Your medication is dispensed."
+
+---
+
+## 🛠 Setup & Installation Guide
+
+Setting up the Blister Bot environment locally on the board requires installing a few core edge-AI dependencies:
+
+### Prerequisites
+Make sure your Arduino Uno Q is running its Debian Linux image and is connected to Wi-Fi for the initial download phase.
+```bash
+sudo apt update
+sudo apt install python3-pip python3-opencv ffmpeg portaudio19-dev libasound-dev
+```
+
+### Model Installations
+Install the specialized Edge AI models required for the system to operate:
+```bash
+pip3 install faster-whisper edge-tts rapidocr-onnxruntime Flask pyserial sounddevice
+pip3 install git+https://github.com/facebookresearch/sam2.git
+```
+
+### Flashing the Real-Time OS
+Remember that the high-level Python code runs on the Qualcomm Quad-Core. You must compile and flash the Arduino `C++` stepper motor code to the ARM Cortex side of the board so that it can receive instructions over the serial bridge from the `cnc_driver.py`.
 
 ---
 
@@ -128,7 +169,7 @@ X_plunger = X_cam * -1
 
 All project files, drivers, and AI scripts are contained within the main repository.
 
-```
+```text
 📦 blister-bot
  ┣ 📂 appliance_terminal/          # Flask Web UI, OCR Scanner & HTTP mic triggers
  ┣ 📂 edge_terminal/               # Serial LCD interface & faster-whisper STT
@@ -170,3 +211,5 @@ To start the Blister Bot system on the Arduino Uno Q, navigate to the `code/` di
 cd code/
 python3 master_controller.py
 ```
+
+*Note: Alternatively, you can use the `scripts/deploy_master.sh` script to set up `systemd` services so the bot runs automatically on boot.*
