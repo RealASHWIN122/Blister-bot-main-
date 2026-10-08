@@ -69,7 +69,7 @@ The Blister Bot relies on a highly integrated architecture split between logical
 
 3. **Automated Pill Extraction ⚙️**
    * Camera 2 takes a snapshot of the blister pack.
-   * **OpenCV contour detection** and **SAM (Segment Anything Model)** locate the exact boundaries of the pill.
+   * **OpenCV contour detection** and **Meta's SAM 2 (Segment Anything Model 2)** locate the exact boundaries of the pill.
    * The software calculates a "Mirror Math" coordinate transformation.
 
 ---
@@ -94,24 +94,33 @@ The mechanical chassis is built around a Cartesian CNC coordinate system paired 
 
 ---
 
-## 💻 Code Explanation & Software
+## 💻 Core Capabilities & Software Modules
 
 Because the machine runs offline, memory management on the Uno Q is critical. The state machine (`master_controller.py`) orchestrates loading and unloading AI models dynamically so we don't run out of RAM.
 
-### Mirror Math Kinematics
-By looking at the clear plastic bubbles on the front of the packet, Camera 2 finds the center coordinates in pixels. The Python script applies a scaling factor to convert pixels to millimeters, and then applies a **Mirror Math** formula to tell the rear-mounted CNC plunger exactly where to strike:
+### Dual Interface System
+The bot provides two main ways to interact:
+1. **Appliance Terminal:** A Flask web UI running on port 5000 that allows caregivers to view the live MJPEG camera feed, monitor logs, and trigger voice commands.
+2. **Edge Terminal:** A lightweight serial-based interface (`main_edge_terminal.py`) that uses `faster-whisper` for ultra-low latency STT and outputs the AI's responses to a physical LCD screen via a serial bridge.
+
+### Intelligent Medicine Scanner & RAG
+* **Medicine Scanner (OCR):** The appliance terminal uses `rapidocr-onnxruntime` to continuously monitor the camera feed, extract text from medicine packets, and announce the names aloud.
+* **Retrieval-Augmented Generation (RAG):** When you ask for medication, the Qwen LLM queries an internal `medical_database.json` to verify schedules, dosages, and interactions before dispensing.
+
+### Mirror Math Kinematics & SAM 2 Vision
+By looking at the clear plastic bubbles on the front of the packet, Camera 2 takes a snapshot. We use **Meta's Segment Anything Model 2 (SAM 2)** combined with OpenCV to accurately detect the boundaries of the blister. The Python script applies a scaling factor to convert pixels to millimeters, and then applies a **Mirror Math** formula to tell the rear-mounted CNC plunger exactly where to strike:
 ```python
 X_plunger = X_cam * -1
 ```
 
 ### AI Pipeline
-1. **Wake Word / Audio Trigger:** Captured via USB mic.
-2. **STT (Sherpa-ONNX):** Transcribes audio to text offline.
-3. **LLM (Qwen 2.5):** Processes intent (e.g. "I need paracetamol").
-4. **Face ID (LBPH):** Verifies the user asking matches the prescription profile in SQLite.
-5. **Vision (OpenCV/SAM):** Targets the pill.
-6. **CNC Drive (cnc_driver.py):** Pulses the stepper motors to punch the pill.
-7. **TTS (Piper):** Announces "Your medication is dispensed."
+1. **Audio Trigger:** Captured via USB mic (filtered by VAD).
+2. **STT (Faster-Whisper / Sherpa-ONNX):** Transcribes audio to text offline.
+3. **LLM & RAG (Qwen 2.5):** Processes intent (e.g. "I need paracetamol") against the medical database.
+4. **Face ID (LBPH):** Verifies the user against `attendance.db` via OpenCV.
+5. **Vision (OpenCV/SAM 2):** Targets the pill boundaries.
+6. **CNC Drive (`cnc_driver.py`):** Pulses the stepper motors to punch the pill.
+7. **TTS (Piper / Edge-TTS):** Announces "Your medication is dispensed."
 
 ---
 
@@ -121,11 +130,16 @@ All project files, drivers, and AI scripts are contained within the main reposit
 
 ```
 📦 blister-bot
+ ┣ 📂 appliance_terminal/          # Flask Web UI, OCR Scanner & HTTP mic triggers
+ ┣ 📂 edge_terminal/               # Serial LCD interface & faster-whisper STT
  ┣ 📂 code/
  ┃ ┣ 📜 master_controller.py       # Main state machine & orchestrator
  ┃ ┣ 📜 cnc_driver.py              # Kinematics & tool offsets
  ┃ ┣ 📜 test_stt.py                # Automated testing for finetuned STT
  ┃ ┣ 📜 test_rag.py                # RAG database evaluation scripts
+ ┃ ┣ 📜 medical_database.json      # RAG inventory and patient rules
+ ┃ ┣ 📜 attendance.db              # SQLite logs for Face ID
+ ┃ ┣ 📂 blister_detector/          # Meta SAM 2 vision bounding box scripts
  ┃ ┗ 📂 ai_modules/           
  ┃   ┣ 📜 face_id.py               # LBPH Face Recognizer
  ┃   ┣ 📜 vision.py                # OpenCV contour detection & SAM 
