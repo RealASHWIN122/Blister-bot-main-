@@ -103,9 +103,27 @@ The Blister Bot relies on a highly integrated architecture split between logical
 
 ## 🔌 Circuit Diagram
 
-*(Circuit Diagram Image Placeholder)*
-> **Tip:** You can generate professional circuit schematics using tools like **Fritzing**, **KiCad**, or **Tinkercad**.
-![Circuit Diagram Placeholder](assets/circuit_diagram.png)
+```mermaid
+graph TD
+    subgraph Power Distribution
+        BATT[16.8V Li-Ion Battery] -->|High Voltage| BUCK[LM2596 Buck Converter]
+        BUCK -->|Stable 5V Rail| DRIVERS[ULN2003 Motor Drivers]
+        USB[Separate USB Power] -->|Safe Logic Power| UNO[Arduino Uno Q]
+    end
+
+    subgraph Mechanical Actuation
+        DRIVERS --> X[X/Y CNC Gantry Steppers]
+        DRIVERS --> Z[Z-Axis Plunger Stepper]
+        DRIVERS --> W[Rotary Wheel Stepper]
+    end
+
+    UNO -->|GPIO Control Signals| DRIVERS
+    
+    style BATT fill:#ff9999,stroke:#333,stroke-width:2px
+    style BUCK fill:#ffcc99,stroke:#333,stroke-width:2px
+    style UNO fill:#99ccff,stroke:#333,stroke-width:2px
+    style DRIVERS fill:#99ff99,stroke:#333,stroke-width:2px
+```
 
 ### Power Isolation
 To prevent inductive voltage spikes from the stepper motors from browning out or frying the logic board, the system uses an isolated power design. The 16.8V battery pack is connected to an **LM2596 buck converter** to supply a dedicated 5V rail strictly for the ULN2003 drivers and stepper motors. The Arduino Uno Q is powered safely on its own separated circuit.
@@ -149,6 +167,33 @@ stateDiagram-v2
 ```
 
 ### 1. Dual Interface System
+
+```mermaid
+graph LR
+    subgraph Arduino Uno Q 
+        CORE((Core AI & State Machine))
+    end
+    
+    subgraph Appliance Terminal
+        FLASK[Flask Web UI :5000]
+        MJPEG[Live MJPEG Feed]
+        HTTP[HTTP Voice Triggers]
+    end
+    
+    subgraph Edge Terminal
+        FW[Faster-Whisper STT]
+        UART[Serial /dev/ttyGS0]
+        LCD[Physical LCD Screen]
+    end
+    
+    FLASK <-->|Web/Network| CORE
+    MJPEG <--> CORE
+    HTTP --> CORE
+    
+    FW -->|Audio Input| CORE
+    CORE -->|Text Output| UART --> LCD
+```
+
 The bot provides two main ways to interact, designed for both patients and caregivers:
 * **Appliance Terminal:** A Flask web UI running on port 5000 that allows caregivers to view the live MJPEG camera feed, monitor system logs, and manually trigger HTTP voice commands.
 * **Edge Terminal:** A lightweight serial-based interface (`main_edge_terminal.py`) that uses `faster-whisper` for ultra-low latency STT and outputs the AI's responses to a physical LCD screen via a serial bridge connected to the microcontroller's UART port (`/dev/ttyGS0`).
@@ -182,22 +227,37 @@ X_plunger = X_cam * -1
 
 ```mermaid
 flowchart LR
-    A[Camera 2 Sees Pill] --> B[SAM 2 Generates Coordinates]
-    B --> C{Coordinate Output}
+    CAM[Camera 2 Front View] -->|Pixel Coordinates| SAM[Meta SAM 2 & OpenCV]
+    SAM -->|Front X, Z Target| MATH{Mirror Math Transform}
+    MATH -->|X_plunger = X_cam * -1| CNC_X[Inverted X-Axis]
+    MATH -->|Z_plunger = Z_cam| CNC_Z[Identical Z-Axis]
+    CNC_X --> PUNCH(((Rear CNC Plunger)))
+    CNC_Z --> PUNCH
     
-    C -->|Z-Axis| D[Z = Z]
-    C -->|X-Axis| E[X = X * -1]
-    
-    D --> F[Send to Motor Pins]
-    E --> F
-    
-    F --> G((CNC Plunger Strikes Exact Target))
-    
-    style E fill:#ff9999,stroke:#333,stroke-width:2px
-    style G fill:#99ff99,stroke:#333,stroke-width:2px
+    style MATH fill:#ffcc00,stroke:#333,stroke-width:2px
+    style PUNCH fill:#ff4d4d,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 ### The Full AI Pipeline
+
+```mermaid
+flowchart TD
+    A([1. Audio Trigger: USB Mic + VAD]) --> B[2. STT: Faster-Whisper]
+    B --> C{3. LLM & RAG: Qwen 2.5 + DB}
+    C -->|Schedule Verified| D{4. Face ID: OpenCV LBPH}
+    D -->|Auth Success| E[5. Vision: SAM 2 Pill Targeting]
+    E --> F[6. CNC Drive: Mirror Math Punch]
+    F --> G([7. TTS: 'Medication Dispensed'])
+
+    C -->|Schedule Mismatch| H([TTS: 'Not time for this medication'])
+    D -->|Auth Failed| I([TTS: 'Unauthorized User'])
+    
+    style A fill:#e6e6fa,stroke:#333
+    style G fill:#d4edda,stroke:#333
+    style H fill:#f8d7da,stroke:#333
+    style I fill:#f8d7da,stroke:#333
+```
+
 1. **Audio Trigger:** Captured via USB mic (filtered by Voice Activity Detection).
 2. **STT:** Transcribes audio to text offline.
 3. **LLM & RAG:** Processes intent (e.g. "I need paracetamol") against the medical database.
