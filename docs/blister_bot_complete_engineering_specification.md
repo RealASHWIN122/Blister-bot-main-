@@ -16,12 +16,12 @@ The system bypasses the traditional "Raspberry Pi + separate Arduino" dual-board
 *   **The AI Brain (Linux Host):** Powered by a Qualcomm Dragonwing QRB2210 (Quad-core Arm Cortex-A53 @ 2.0 GHz) with an Adreno GPU and 4GB of LPDDR4 RAM. It runs a full Debian Linux OS, hosting the local Python server, SQLite databases, computer vision models, and heavy AI inference runtimes.
 *   **The Motor Brawn (Real-Time MCU):** An integrated ST STM32U585 (Arm Cortex-M33) microcontroller handles deterministic, low-level GPIO timing and pulse-generation for stepper motors without Linux kernel scheduling jitter.
 
-### 2.2 Split-Brain Power Isolation
-Stepper motors draw substantial current and produce inductive back-EMF voltage spikes that can instantly destroy sensitive logic boards or trigger sudden brownouts. To prevent this, the system employs an electrically isolated power grid:
+### 2.2 Split-Brain Power Isolation & Direct L293D Driver Architecture
+Stepper motors draw substantial current and produce inductive back-EMF voltage spikes that can disrupt sensitive logic boards or trigger sudden brownouts. Instead of using an external LM2596 buck converter, the system employs **three dedicated L293D dual H-bridge motor drivers** (one driver per motor for the 3 stepper motors):
 *   **Logic Power:** The Arduino Uno Q is powered safely on its own separated 5.0V circuit via USB-C.
-*   **Motor Power:** A 16.8V 4S Li-Ion battery pack supplies raw high voltage to an **LM2596 Buck Converter**.
-*   **Voltage Step-Down:** The LM2596 steps down the 16.8V pack to a stable, high-current 5.0V rail. This dedicated 5V rail exclusively powers the ULN2003 motor driver boards and 28BYJ-48 stepper motors. *The 16.8V rail is never connected directly to the Arduino or driver logic pins.*
-*   **Common Grounding:** Grounds (GND) between the motor power rail and the Arduino logic are safely tied together to ensure common logic reference while isolating motor current return paths.
+*   **Direct Motor Power:** Motor power connects directly to the motor supply voltage pins (`Vcc2` / `Vs`) of each L293D driver IC, providing clean power directly to the 3 stepper motors without requiring a buck converter.
+*   **Logic Separation:** The logic supply pins (`Vcc1` / `Vss`) and control inputs are driven safely by the 5.0V rail and GPIOs of the Arduino Uno Q.
+*   **Common Grounding & Clamp Diodes:** Grounds (GND) are tied together to maintain a common logic reference, while internal clamp diodes inside the L293D suppress inductive motor flyback spikes, keeping the microprocessor safe.
 
 ### 2.3 Inter-Core Bridge & Motion Protocol
 The Linux OS side and the real-time MCU side communicate via two distinct high-reliability interfaces:
@@ -37,9 +37,9 @@ The physical machine utilizes a dual-sided "sandwich" architecture: Camera 2 ins
 
 ### 3.1 The 3-Axis Cartesian Gantry (`blissupport.stl`)
 The CNC gantry operates entirely behind the foil backing of the blister pack:
-*   **X-Axis (Horizontal Traverse):** Driven by a 5V 28BYJ-48 stepper motor paired with a ULN2003 driver.
-*   **Y-Axis (Vertical / Height Traverse):** Driven by dual 28BYJ-48 stepper motors wired in parallel to prevent racking or binding on the dual linear guide rails. It features a custom 3D-printed Perpendicular L-Bracket Hard Stop to physically arrest gantry overtravel and prevent derailment.
-*   **Z-Axis (Punch / Drill Mechanism):** A rack-and-pinion plunger driven by a 28BYJ-48 stepper that punctures the foil backing. In software, this axis executes both single-strike plunging and full boundary contour tracing to trace around the pill circumference. *(Hardware upgrade roadmap: Drop-in compatibility with high-torque MG995 servos, NEMA 17 steppers, or 12V DC solenoids for high-impulse foil rupturing).*
+*   **X-Axis (Horizontal Traverse):** Driven by a 28BYJ-48 stepper motor paired with dedicated L293D Driver #1.
+*   **Y-Axis (Vertical / Height Traverse):** Driven by a 28BYJ-48 stepper motor paired with dedicated L293D Driver #2 along linear guide rails. It features a custom 3D-printed Perpendicular L-Bracket Hard Stop to physically arrest gantry overtravel and prevent derailment.
+*   **Z-Axis (Punch / Drill Mechanism):** A rack-and-pinion plunger driven by a 28BYJ-48 stepper paired with dedicated L293D Driver #3 that punctures the foil backing. In software, this axis executes both single-strike plunging and full boundary contour tracing to trace around the pill circumference. *(Hardware upgrade roadmap: Drop-in compatibility with high-torque MG995 servos, NEMA 17 steppers, or 12V DC solenoids for high-impulse foil rupturing).*
 
 ![CNC Prototype Gantry](cncprototype.jpg)
 

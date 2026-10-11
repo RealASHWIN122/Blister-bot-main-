@@ -41,11 +41,10 @@ Furthermore, the Blister Bot acts as an intelligent medical assistant. It featur
 | Parts Used | How Many Units Required | Purpose |
 | :--- | :---: | :--- |
 | **Arduino Uno Q** | 1 | The main brain. The quad-core Qualcomm side handles AI and web serving, while the ARM Cortex RTOS handles real-time motor control. |
-| **ULN2003 Motor Drivers** | 3 | Drives the stepper motors based on GPIO signals from the Uno Q. |
-| **28BYJ-48 Stepper Motors** | 4 | Controls the X, dual Y, and Z axes of the CNC gantry as well as rotary wheel indexing. |
+| **L293D Motor Drivers** | 3 | 3 dedicated dual H-bridge motor drivers (1 driver per motor) providing direct bidirectional drive for the 3 stepper motors without needing a buck converter. |
+| **28BYJ-48 Stepper Motors** | 3 | Controls the 3 physical axes of the CNC gantry (X-axis, Y-axis, and Z-axis plunger). |
 | **USB Webcams** | 2 | Camera 1 is for patient Facial Recognition & OCR. Camera 2 is for Pill Contour Detection. |
-| **16.8V Battery Pack** | 1 | Main power supply for the entire robotic system. |
-| **LM2596 Buck Converter** | 1 | Steps down the 16.8V battery voltage to a safe, dedicated 5V rail for the motors. |
+| **Motor Power Supply / Battery Pack** | 1 | Dedicated power supply routed directly to the L293D motor supply pins (Vcc2). |
 | **Custom 3D Printed Parts** | 1 Set | Includes the `blissupport.stl` framing, CNC gantry, and the `medicinewheelstand.stl` rotary wheel. |
 
 ---
@@ -55,9 +54,8 @@ Furthermore, the Blister Bot acts as an intelligent medical assistant. It featur
 ```mermaid
 graph TD
     subgraph Power Supply
-        BATT[16.8V Li-Ion Battery] --> BUCK[LM2596 Buck Converter]
-        BUCK -->|5.0V| RAIL[5V Power Rail]
-        USB[USB-C Cable] -->|5.0V| UNO[Arduino Uno Q]
+        BATT[Motor Power Supply / Battery] --> RAIL[Motor Power Rail]
+        USB[USB-C Cable] -->|5.0V Logic| UNO[Arduino Uno Q]
     end
 
     subgraph The Brain: Arduino Uno Q
@@ -72,13 +70,12 @@ graph TD
     end
 
     subgraph Motor Control
-        MCU -->|Data/Step Pins| DRIVERS
-        RAIL -->|High Current Power| DRIVERS
+        MCU -->|GPIO Step Pins| DRIVERS[3x L293D Motor Drivers]
+        RAIL -->|Direct Motor Power Vcc2| DRIVERS
         
-        DRIVERS[ULN2003 Drivers] --> X[X-Axis Stepper]
-        DRIVERS --> Y[Y-Axis Steppers x2]
-        DRIVERS --> Z[Z-Axis Punch Stepper]
-        DRIVERS --> W[Rotary Wheel Stepper]
+        DRIVERS --> X[Motor 1: X-Axis Stepper]
+        DRIVERS --> Y[Motor 2: Y-Axis Stepper]
+        DRIVERS --> Z[Motor 3: Z-Axis Punch Stepper]
     end
 ```
 
@@ -118,41 +115,41 @@ The system bypasses the traditional "Raspberry Pi + separate Arduino" dual-board
 ```mermaid
 graph TD
     subgraph Power Distribution
-        BATT[16.8V Li-Ion Battery] -->|High Voltage| BUCK[LM2596 Buck Converter]
-        BUCK -->|Stable 5V Rail| DRIVERS[ULN2003 Motor Drivers]
-        USB[Separate USB Power] -->|Safe Logic Power| UNO[Arduino Uno Q]
+        BATT[Motor Power Supply] -->|Direct Motor Voltage Vcc2| DRIVERS[3x L293D Motor Drivers]
+        USB[Separate USB Power] -->|5V Logic Power| UNO[Arduino Uno Q]
+        UNO -->|5V Logic Vcc1 & GND| DRIVERS
     end
 
     subgraph Mechanical Actuation
-        DRIVERS --> X[X/Y CNC Gantry Steppers]
-        DRIVERS --> Z[Z-Axis Plunger Stepper]
-        DRIVERS --> W[Rotary Wheel Stepper]
+        DRIVERS --> X[Motor 1: X-Axis Stepper]
+        DRIVERS --> Y[Motor 2: Y-Axis Stepper]
+        DRIVERS --> Z[Motor 3: Z-Axis Plunger Stepper]
     end
 
-    UNO -->|GPIO Control Signals| DRIVERS
+    UNO -->|GPIO Phase Controls| DRIVERS
     
     style BATT fill:#ff9999,stroke:#333,stroke-width:2px
-    style BUCK fill:#ffcc99,stroke:#333,stroke-width:2px
     style UNO fill:#99ccff,stroke:#333,stroke-width:2px
     style DRIVERS fill:#99ff99,stroke:#333,stroke-width:2px
 ```
 
-### Power Isolation
-To prevent inductive voltage spikes from the stepper motors from browning out or frying the logic board, the system uses an isolated power design:
-* **Motor Rail:** The 16.8V Li-Ion battery pack routes into an **LM2596 buck converter**, stepping down to a dedicated, stable 5.0V rail strictly for the ULN2003 drivers and 28BYJ-48 stepper motors. The 16.8V raw power is never connected directly to the Arduino.
-* **Logic Rail:** The Arduino Uno Q is powered safely on its own separated 5V circuit via USB-C. Logic grounds are tied together to ensure a common reference while keeping high-current motor surges isolated.
+### Power Isolation & Direct L293D Driver Architecture
+Instead of using an external LM2596 buck converter, the machine uses **three dedicated L293D dual H-bridge motor drivers** (1 driver per stepper motor):
+* **Direct Motor Driving:** Motor power connects directly to the motor supply voltage pins (`Vcc2` / `Vs`) of each L293D driver IC, providing clean power directly to the 3 stepper motors without requiring a buck converter.
+* **Logic Separation:** The logic supply pins (`Vcc1` / `Vss`) and control inputs are driven safely by the 5.0V rail and GPIOs of the Arduino Uno Q.
+* **Common Ground & Inductive Isolation:** Grounds are tied together to maintain a common logic reference while internal clamp diodes in the L293D suppress inductive motor flyback spikes, keeping the microprocessor safe.
 
 ### Firmware Pinout & Stepper Control (`cnc_plotter.ino`)
 
-The firmware on the STM32 microcontroller side implements an 8-step half-stepping sequence (`stepMatrix[8][4]`) with a 2ms phase delay to maximize holding torque and eliminate skipped steps:
+The firmware on the STM32 microcontroller side implements an 8-step half-stepping sequence (`stepMatrix[8][4]`) with a 2ms phase delay to maximize holding torque and eliminate skipped steps across the 3 motors:
 
 | Motor Axis | Microcontroller Digital Pins | Driver Board | Function |
 | :--- | :--- | :--- | :--- |
-| **X-Axis** | Pins `2, 3, 4, 5` | ULN2003 | Horizontal gantry traverse |
-| **Y-Axis** | Pins `6, 7, 8, 9` | ULN2003 | Vertical gantry height (dual motors parallel) |
-| **Z-Axis** | Pins `10, 11, 12, 13` | ULN2003 | Foil plunger / contour drill punch |
+| **X-Axis** | Pins `2, 3, 4, 5` | L293D Driver #1 | Horizontal gantry traverse |
+| **Y-Axis** | Pins `6, 7, 8, 9` | L293D Driver #2 | Vertical gantry height traverse |
+| **Z-Axis** | Pins `10, 11, 12, 13` | L293D Driver #3 | Foil plunger / contour drill punch |
 
-**Thermal Protection (`powerDown()`):** After every coordinated axis movement, all four phase pins on the active axis are immediately driven `LOW`. This eliminates continuous holding current during idle periods, preventing the 28BYJ-48 stepper coils from overheating and conserving battery power.
+**Thermal Protection (`powerDown()`):** After every coordinated axis movement, all four phase pins on the active axis are immediately driven `LOW`. This eliminates continuous holding current during idle periods, preventing stepper coils from overheating and conserving battery power.
 
 ---
 
@@ -176,15 +173,15 @@ Instead of 3D printing custom plastic slots for hundreds of different pill blist
 ![CNC Prototype Gantry](assets/cncprototype.jpg)
 
 The CNC gantry operates entirely on the rear foil side of the blister pack:
-* **Dual Linear Y-Rails:** Driven by dual 28BYJ-48 motors wired in parallel to prevent racking or binding on the rails. It features a custom 3D-printed Perpendicular L-Bracket Hard Stop to arrest overtravel.
+* **Dual Linear Y-Rails:** Driven by the Y-axis stepper motor along the guide rails. It features a custom 3D-printed Perpendicular L-Bracket Hard Stop to arrest overtravel.
 * **X-Axis Traverse:** Slides horizontally along the gantry cross-beam to position the toolhead.
 * **Z-Axis Plunger & Drill Tool:** Punctures the foil backing. Software controls both direct plunging and coordinated X/Y contour-tracing to cut around the perimeter of the blister.
 * **Chassis Frame (`blissupport.stl`):** Houses the cameras at fixed focal lengths to ensure OpenCV contour mathematics remain consistent.
 
 ### 3. Rapid Prototyping Realities: The "Trash-Bot" Pivot
 
-Building high-precision mechatronics using low-cost 28BYJ-48 geared steppers and desktop 3D prints introduces real-world physical hurdles:
-* **Axis Binding & Torque Limits:** 3D prints flex under side loads, and 28BYJ-48 motors have modest torque.
+Building high-precision mechatronics using low-cost geared steppers and desktop 3D prints introduces real-world physical hurdles:
+* **Axis Binding & Torque Limits:** 3D prints flex under side loads, and small geared stepper motors have modest torque.
 * **The "Flat-Bed Hack" (MVP Triage):** To decouple mechanical troubleshooting from AI software validation, the rotary wheel can be temporarily detached and blister packs taped flat to the base chassis ("Flat-Bed Hack").
 * **Frame Reinforcement:** Cardboard gussets, hot glue, and triangular brace structures were used during initial testing to stiffen the 3D-printed frame, allowing the entire vision-to-motor coordinate loop to be fully verified before locking in final mechanical parts.
 
@@ -446,10 +443,11 @@ sudo systemctl start blisterbot.service
 📦 Blister-bot-main-
  ┣ 📂 appliance_terminal/          # Flask Web UI (port 5000), OCR scanner & manual axis jogging
  ┣ 📂 edge_terminal/               # Serial LCD interface (/dev/ttyGS0) & faster-whisper STT
- ┣ 📂 assets/                      # Hardware images, prototype photos, and demo media
+ ┣ 📂 assets/                      # Hardware images, prototype photos, and demo video
  ┃ ┣ 🖼️ arduinoboardimage.webp    # Arduino Uno Q board breakdown
  ┃ ┣ 🖼️ cncprototype.jpg          # 3-axis CNC gantry prototype photo
  ┃ ┣ 🖼️ medholderphoto.jpg        # Rotary paddle medicine wheel photo
+ ┃ ┣ 🎥 cncmovingtrial.mp4        # CNC physical movement test trial video
  ┃ ┗ 🖼️ sample_result.jpg         # SAM 2 pill segmentation output
  ┣ 📂 code/
  ┃ ┣ 📜 master_controller.py       # Main state machine, 10-class intent classifier & video server (port 9999)
@@ -476,10 +474,17 @@ sudo systemctl start blisterbot.service
 
 ---
 
-## 🎯 Testing & Final Result
+## 🎯 Testing & Final Result: CNC Moving Trial
 
-*(Video/GIF Placeholder)*
-![Final Result Video Placeholder](assets/demo_video.gif)
+<video src="assets/cncmovingtrial.mp4" controls="controls" width="100%"></video>
+
+*(If your browser does not support inline video playback, view or download the raw clip directly: [assets/cncmovingtrial.mp4](assets/cncmovingtrial.mp4))*
+
+### Physical Movement Trial Breakdown (`assets/cncmovingtrial.mp4`)
+In this physical test, the 3-axis Cartesian gantry is commanded through coordinated motion routines to validate axis travel, linear alignment, and stepper stability:
+* **Dual Linear Rail Smoothness:** Demonstrates the carriage traversing cleanly along the guide rails without binding or stalling.
+* **Direct L293D Stepper Actuation:** Shows the 3 stepper motors responding to the 8-step half-stepping sequence driven directly through the three L293D dual H-bridge drivers without any buck converter.
+* **Repeatability:** Validates that the mechanical gantry accurately returns to its calibrated optical home position `(cx, cy)` after executing motion sweeps.
 
 Once completely assembled, the Blister Bot operates entirely hands-free. A patient simply requests their medicine, looks into the primary camera, and waits. The machine indexes the wheel, lines up the CNC plunger, and perfectly extracts the pill directly from the foil without any human intervention.
 

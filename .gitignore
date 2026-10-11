@@ -6,6 +6,7 @@
 .venv/
 *.eim
 *.mp4
+!assets/cncmovingtrial.mp4
 
 # Model downloads & huge frameworks
 code/stt_dataset_collector/icefall/
