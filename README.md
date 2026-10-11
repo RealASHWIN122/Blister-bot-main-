@@ -474,6 +474,16 @@ sudo systemctl start blisterbot.service
 
 ---
 
+## 🎯 Testing & Final Results
+
+Got the cnc miller working and the facial recog and llm working.Tried to use a bluetooth speaker for the llm output but due to connectivity issues had to switch to an earphone.The cnc miller is able to move successfully,but while drilling,due to the hollow wheel and the fact that the medicine holder wasnt strongly glued or attached to the ground became unstable.
+
+<video src="assets/cncmovingtrial.mp4" controls="controls" width="100%"></video>
+
+*(If your browser does not support inline video playback, view or download the raw clip directly: [assets/cncmovingtrial.mp4](assets/cncmovingtrial.mp4))*
+
+---
+
 ## 📝 Developer Reflections: Current Status & Lessons Learned
 
 ### current status and thoughts on the whole thing:
@@ -495,22 +505,6 @@ the wheel of the medicine holder that was attached to the medicine stand did not
 
 ### Hardware & Resource Constraints
 The uno q is a capable board,but it can only fit a few models at once in its 4gb ram,and so i haf to work on a logic that loaded models only at the time of need and released the ones that were not immediately relevant
-
----
-
-## 🎯 Testing & Final Result: CNC Moving Trial
-
-<video src="assets/cncmovingtrial.mp4" controls="controls" width="100%"></video>
-
-*(If your browser does not support inline video playback, view or download the raw clip directly: [assets/cncmovingtrial.mp4](assets/cncmovingtrial.mp4))*
-
-### Physical Movement Trial Breakdown (`assets/cncmovingtrial.mp4`)
-In this physical test, the 3-axis Cartesian gantry is commanded through coordinated motion routines to validate axis travel, linear alignment, and stepper stability:
-* **Dual Linear Rail Smoothness:** Demonstrates the carriage traversing cleanly along the guide rails without binding or stalling.
-* **Direct L293D Stepper Actuation:** Shows the 3 stepper motors responding to the 8-step half-stepping sequence driven directly through the three L293D dual H-bridge drivers without any buck converter.
-* **Repeatability:** Validates that the mechanical gantry accurately returns to its calibrated optical home position `(cx, cy)` after executing motion sweeps.
-
-Once completely assembled, the Blister Bot operates entirely hands-free. A patient simply requests their medicine, looks into the primary camera, and waits. The machine indexes the wheel, lines up the CNC plunger, and perfectly extracts the pill directly from the foil without any human intervention.
 
 ---
 

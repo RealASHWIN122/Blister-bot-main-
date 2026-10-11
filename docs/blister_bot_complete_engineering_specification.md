@@ -289,7 +289,12 @@ Building a rigid, high-precision Cartesian CNC machine using low-cost 28BYJ-48 m
 *   **The "Flat-Bed Hack" (MVP Triage):** To decouple mechanical troubleshooting from AI software validation, the rotary wheel can be temporarily detached. Blister packs are secured flat to the chassis bed ("Flat-Bed Hack").
 *   **Frame Reinforcement:** Cardboard gussets, hot glue, and triangular braces are utilized during live prototyping to stiffen the chassis (`blissupport.stl`), allowing the entire vision-to-motor coordinate pipeline to be proven and refined before finalizing industrial-grade mechanical components.
 
-### 10.3 Developer Reflections & Field Notes
+### 10.3 Testing & Physical Results
+Got the cnc miller working and the facial recog and llm working.Tried to use a bluetooth speaker for the llm output but due to connectivity issues had to switch to an earphone.The cnc miller is able to move successfully,but while drilling,due to the hollow wheel and the fact that the medicine holder wasnt strongly glued or attached to the ground became unstable.
+
+*(Physical trial video available at `assets/cncmovingtrial.mp4`)*
+
+### 10.4 Developer Reflections & Field Notes
 
 #### current status and thoughts on the whole thing:
 In the programs last week,i attempted to move from a cardboard DIY setup to a more formal 3d printed version.I had to 3d print the base,designed a custom medicine holder and had to find a way to make the wheel rotate and control its rotation.The drill that was supposed to make a hole in the packets was too short and I had to print the "chain and slide" thing again to increase its length,however  due to some issues with the software/scaling problems the new part came out wrong.The medicine holder also had a hole in it for a shaft piece,but the piece broke and  got stuck ,which kind of paused the project
