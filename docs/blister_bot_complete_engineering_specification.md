@@ -289,6 +289,28 @@ Building a rigid, high-precision Cartesian CNC machine using low-cost 28BYJ-48 m
 *   **The "Flat-Bed Hack" (MVP Triage):** To decouple mechanical troubleshooting from AI software validation, the rotary wheel can be temporarily detached. Blister packs are secured flat to the chassis bed ("Flat-Bed Hack").
 *   **Frame Reinforcement:** Cardboard gussets, hot glue, and triangular braces are utilized during live prototyping to stiffen the chassis (`blissupport.stl`), allowing the entire vision-to-motor coordinate pipeline to be proven and refined before finalizing industrial-grade mechanical components.
 
+### 10.3 Developer Reflections & Field Notes
+
+#### current status and thoughts on the whole thing:
+In the programs last week,i attempted to move from a cardboard DIY setup to a more formal 3d printed version.I had to 3d print the base,designed a custom medicine holder and had to find a way to make the wheel rotate and control its rotation.The drill that was supposed to make a hole in the packets was too short and I had to print the "chain and slide" thing again to increase its length,however  due to some issues with the software/scaling problems the new part came out wrong.The medicine holder also had a hole in it for a shaft piece,but the piece broke and  got stuck ,which kind of paused the project
+
+#### what i should have done:
+The drill was the core part of the entire project,and instead of dedicating all my time to fixing it first,i spread my focus too thin and focused on several things at once,especially the ai work on the software side  which could have been done last
+
+#### Edge Segmentation & Vision
+Edge segmentation models are pretty good now,and sam3 is especially good.If i remember correctly,i did not have to finetune it and just gave it one or two labelled examples and it was able to find the pill boundaries
+
+#### Speech Models & Fine-Tuning Lessons
+Edge based text to speech models  still have a lot to improve,though they are capable.Their weakness was that they were really optimized for us speakers and couldnt always transcribe the audio properly.To fix this,i tried to create a mini dataset consisting of some audio clips of indian english speakers saying common medicines related phrases like "give me paracetamol" etc to finetune the model for my usecase,but as my dataset was tiny,it actually made the model worse.The initial learning rate that was set was also too high,causing the model to forget what it had already learned.I intend to continue this with a larger dataset and more appropriate hyperparameters to see if i can optimize this.
+
+#### Mechanical Observations & Fixes
+The medicine holder is hollow in the center,and this was a deliberate choice ,so that the camera could see the front of the medicine and guess where the pill boundaries were,however this made the drilling tricky,as applying too much force on the packet caused it to pop out of the medicine holder,so i intend to solve this  with a translucent but rigid cover in the front
+
+the wheel of the medicine holder that was attached to the medicine stand did not rotate smoothly due to friction,and this would lead to low precision when switching between meds.I intend to explore ways to make the rotation smoother by exploring things like ball bearings to fix this issue
+
+#### Hardware & Resource Constraints
+The uno q is a capable board,but it can only fit a few models at once in its 4gb ram,and so i haf to work on a logic that loaded models only at the time of need and released the ones that were not immediately relevant
+
 ---
 
 ## 11. System Services & Automated Deployment
