@@ -185,6 +185,33 @@ Building high-precision mechatronics using low-cost geared steppers and desktop 
 * **The "Flat-Bed Hack" (MVP Triage):** To decouple mechanical troubleshooting from AI software validation, the rotary wheel can be temporarily detached and blister packs taped flat to the base chassis ("Flat-Bed Hack").
 * **Frame Reinforcement:** Cardboard gussets, hot glue, and triangular brace structures were used during initial testing to stiffen the 3D-printed frame, allowing the entire vision-to-motor coordinate loop to be fully verified before locking in final mechanical parts.
 
+### 4. Sample AI-Based CAD Prompts (Zoo / Text-to-CAD Generation)
+
+For makers and engineers using AI-assisted CAD tools (such as **Zoo.dev Text-to-CAD**, **Zoo KCL Copilots**, or **OpenSCAD AI**), the following prompt templates can be used to generate both functional parts of the medicine holder:
+
+#### Part 1: The 4-Blade Rotary Paddle Wheel Rotor (`main.kcl` / `medicinewheelstand.stl`)
+```text
+Create a 3D-printable parametric 4-blade rotary paddle wheel for holding foil blister packs with the following exact specifications:
+- Hub: Cylindrical central hub of diameter 20mm and total length 97mm oriented along the Z-axis.
+- Motor Shaft Socket: Blind D-shaped bore on one end of the hub with diameter 5mm, truncated by a flat chord 1.5mm from center (4mm flat-to-curve distance), with a blind depth of 12mm to snugly fit a 28BYJ-48 stepper motor D-shaft.
+- Rotor Blades: Four identical rectangular blades extending radially at 90-degree intervals around the hub.
+- Blade Dimensions: Each blade length is 95mm parallel to the Z-axis. Base thickness is 3mm. Total outer blade width is 68mm.
+- Sliding Retention Channel: Two 2mm thick vertical side walls form a 64mm inner bay for sliding in standard medicine blister packs. Each wall features a 2mm overhang retaining lip with 1.5mm thickness, located 3.5mm above the base plate (5mm total rail height), leaving a 60mm open top aperture between lips.
+- Central Optical/Punch Window: Each blade base plate features a centered through-cut rectangular pocket measuring 50mm wide by 80mm long, leaving 7.5mm flush end borders on each end to keep blister packs suspended over the void.
+- Slicing & Print Orientation: All internal corners have a 0.5mm fillet to relieve stress. Output as a watertight manifold solid in millimeter units.
+```
+
+#### Part 2: The Stationary Medicine Stand & Bearing Mount (`medicinewheelstand.stl` Stator)
+```text
+Create a 3D-printable stationary mounting stand and bearing bracket to support the rotary medicine wheel of an automated pill dispenser with the following specifications:
+- Base Flange: A flat rectangular base plate measuring 110mm x 80mm with a thickness of 6mm, featuring four counterbored M4 mounting holes spaced 95mm x 65mm apart to rigidly anchor to the machine chassis bed.
+- Upright Stanchion: A vertical support pillar of height 110mm, width 40mm, and thickness 12mm rising perpendicularly from the base plate, reinforced by two triangular gusset ribs (thickness 6mm) connecting the pillar to the base to eliminate flex under drilling loads.
+- Stepper Motor Mount: The top section features a recessed circular mounting face for a 28BYJ-48 geared stepper motor, with a 28mm diameter clearance pocket, a central 9mm shaft hole, and two M3 mounting screw pass-through slots spaced 35mm center-to-center.
+- Ball Bearing Pocket: On the opposing face of the upright, include a precision concentric bearing recess designed to house a standard 608zz ball bearing (outer diameter 22mm, depth 7mm, with a 0.15mm interference fit tolerance) to support the rotor hub axle and reduce rotational friction.
+- Optical Clearance: Include an offset notch to allow an internal webcam (Camera 2) an unobstructed view of the rotating medicine pockets.
+- Slicing & Printability: Designed for FDM 3D printing without support on the base, 1mm chamfers on bottom edges, watertight manifold solid.
+```
+
 ---
 
 ## 💻 Deep Dive: Core AI Capabilities & Software Modules

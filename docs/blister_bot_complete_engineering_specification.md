@@ -57,6 +57,29 @@ Rather than requiring bespoke 3D-printed trays for each pill brand, the machine 
 
 ![Medicine Holder CAD Wheel](medholderphoto.jpg)
 
+#### AI-Based CAD Prompts for Medicine Holder Generation (Zoo Text-to-CAD)
+For automated generative modeling in tools like Zoo.dev, the following prompts generate both functional parts of the medicine holder:
+
+*   **Prompt 1 (Rotary Paddle Wheel):**
+    ```text
+    Create a 3D-printable parametric 4-blade rotary paddle wheel for holding foil blister packs:
+    - Cylindrical hub: diameter 20mm, length 97mm along Z-axis.
+    - Motor socket: blind D-shaped bore on one end of diameter 5mm, truncated by a flat 1.5mm from center, 12mm depth (fits 28BYJ-48 stepper shaft).
+    - 4 radial blades at 90-degree intervals: length 95mm, base thickness 3mm, outer width 68mm.
+    - Sliding channels: 2mm side walls with 64mm inner bay, 2mm overhang retaining lips (1.5mm thick, 3.5mm above base, 60mm top opening).
+    - Center window: centered rectangular through-cut of 50mm x 80mm leaving 7.5mm flush end borders.
+    - Watertight manifold solid, 0.5mm stress fillets on interior corners.
+    ```
+*   **Prompt 2 (Stationary Stand & Bearing Mount):**
+    ```text
+    Create a 3D-printable stationary mounting stand and bearing bracket for the rotary wheel:
+    - Base: 110mm x 80mm x 6mm with four M4 mounting holes spaced 95mm x 65mm.
+    - Upright: 110mm height, 40mm width, 12mm thickness with two 6mm triangular reinforcement gussets.
+    - Stepper mount: recessed 28mm circular pocket for 28BYJ-48 motor, central 9mm shaft hole, two M3 slots at 35mm centers.
+    - Bearing pocket: concentric recess for 608zz ball bearing (22mm OD, 7mm depth, 0.15mm interference fit).
+    - Camera notch for unobstructed internal lens view; watertight manifold solid.
+    ```
+
 ### 3.3 Low-Level Firmware & Stepper Pinout (`cnc_plotter.ino`)
 The firmware implements an 8-step half-stepping sequence (`stepMatrix[8][4]`) to maximize holding torque and eliminate jitter on 28BYJ-48 geared steppers:
 *   **X-Axis Pins:** Arduino Digital Pins `2, 3, 4, 5`
