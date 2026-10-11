@@ -51,9 +51,35 @@ Furthermore, the Blister Bot acts as an intelligent medical assistant. It featur
 
 ## ⚡ System Architecture
 
-*(System Architecture Image Placeholder)*
-> **Tip:** You can generate this system architecture block diagram using a tool like **Mermaid.js**, **Draw.io**, or **Lucidchart**.
-![System Architecture Placeholder](assets/system_architecture.png)
+```mermaid
+graph TD
+    subgraph Power Supply
+        BATT[16.8V Li-Ion Battery] --> BUCK[LM2596 Buck Converter]
+        BUCK -->|5.0V| RAIL[5V Power Rail]
+        USB[USB-C Cable] -->|5.0V| UNO[Arduino Uno Q]
+    end
+
+    subgraph The Brain: Arduino Uno Q
+        UNO --> |Debian OS| LINUX[AI & Python Server]
+        UNO --> |RTOS| MCU[Motor Controller]
+    end
+
+    subgraph Peripherals
+        CAM1[Camera 1: Face ID / OCR] --> LINUX
+        CAM2[Camera 2: SAM 2 Targeting] --> LINUX
+        MIC[USB Mic / Speaker] <--> LINUX
+    end
+
+    subgraph Motor Control
+        MCU -->|Data/Step Pins| DRIVERS
+        RAIL -->|High Current Power| DRIVERS
+        
+        DRIVERS[ULN2003 Drivers] --> X[X-Axis Stepper]
+        DRIVERS --> Y[Y-Axis Steppers x2]
+        DRIVERS --> Z[Z-Axis Punch Stepper]
+        DRIVERS --> W[Rotary Wheel Stepper]
+    end
+```
 
 The Blister Bot relies on a highly integrated architecture split between logical AI processing and real-time physical actuation:
 
@@ -99,6 +125,29 @@ The mechanical chassis is built around a Cartesian CNC coordinate system paired 
 
 Because the machine runs offline, memory management on the Uno Q is critical. The state machine (`master_controller.py`) orchestrates loading and unloading AI models dynamically so we don't run out of RAM.
 
+```mermaid
+stateDiagram-v2
+    [*] --> Standby: Boot Complete
+    
+    Standby --> Setup_Mode: Voice Command "Bot, setup"
+    Standby --> Dispense_Mode: Voice Command "I need meds"
+    Standby --> Dispense_Mode: Scheduled Time Hit
+    
+    state Setup_Mode {
+        FaceID --> OCR_Scan: Capture Patient Data
+        OCR_Scan --> DB_Save: Read Foil Text
+        DB_Save --> Voice_Confirm: Save to SQLite
+    }
+    Setup_Mode --> Standby
+    
+    state Dispense_Mode {
+        Auth --> Wheel_Turn: Face/Voice Verified
+        Wheel_Turn --> AI_Target: Index Meds
+        AI_Target --> CNCPunch: SAM 2 Finds Pill
+    }
+    Dispense_Mode --> Standby: Dispense Complete
+```
+
 ### 1. Dual Interface System
 The bot provides two main ways to interact, designed for both patients and caregivers:
 * **Appliance Terminal:** A Flask web UI running on port 5000 that allows caregivers to view the live MJPEG camera feed, monitor system logs, and manually trigger HTTP voice commands.
@@ -129,6 +178,23 @@ The Python script applies a scaling factor to convert pixels to millimeters, and
 # The camera looks at the front, but the CNC punch attacks from the rear.
 # The X-axis must be inverted for perfect alignment.
 X_plunger = X_cam * -1
+```
+
+```mermaid
+flowchart LR
+    A[Camera 2 Sees Pill] --> B[SAM 2 Generates Coordinates]
+    B --> C{Coordinate Output}
+    
+    C -->|Z-Axis| D[Z = Z]
+    C -->|X-Axis| E[X = X * -1]
+    
+    D --> F[Send to Motor Pins]
+    E --> F
+    
+    F --> G((CNC Plunger Strikes Exact Target))
+    
+    style E fill:#ff9999,stroke:#333,stroke-width:2px
+    style G fill:#99ff99,stroke:#333,stroke-width:2px
 ```
 
 ### The Full AI Pipeline
